@@ -21,7 +21,9 @@ const authenticate = async (req, res, next) => {
 
     req.user = user;
     req.token = token;
-    req.supabase = createUserClient(token);
+    const client = createUserClient(token);
+    req.supabase = client;
+    req.userClient = client;
 
     next();
   } catch (err) {
@@ -39,7 +41,9 @@ const optionalAuth = async (req, res, next) => {
         if (!error && user) {
           req.user = user;
           req.token = token;
-          req.supabase = createUserClient(token);
+          const client = createUserClient(token);
+          req.supabase = client;
+          req.userClient = client;
           return next();
         }
       }
@@ -47,11 +51,13 @@ const optionalAuth = async (req, res, next) => {
     req.user = null;
     req.token = null;
     req.supabase = supabase;
+    req.userClient = supabase;
     next();
   } catch (err) {
     req.user = null;
     req.token = null;
     req.supabase = supabase;
+    req.userClient = supabase;
     next();
   }
 };

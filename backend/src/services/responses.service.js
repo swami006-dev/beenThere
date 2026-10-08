@@ -72,22 +72,23 @@ class ResponsesService {
       const { data: responses, error } = await query;
       if (!error && Array.isArray(responses)) {
         list = responses.map((r) => formatResponseDTO(r));
+      } else if (error) {
+        // Fallback without join
+        let plainQuery = userClient
+          .from('responses')
+          .select('*')
+          .order('created_at', { ascending: true });
+        if (postId) plainQuery = plainQuery.eq('post_id', postId);
+        const { data: plainData } = await plainQuery;
+        if (Array.isArray(plainData)) {
+          list = plainData.map((r) => formatResponseDTO(r));
+        }
       }
     } catch (e) {
       console.warn('DB listResponses warning:', e.message);
     }
 
-    // Merge in responses from persistent disk store if not already present
-    try {
-      const diskResponses = loadResponsesStore();
-      const filteredDisk = postId ? diskResponses.filter(r => (r.post_id || r.postId) === postId) : diskResponses;
-      filteredDisk.forEach(r => {
-        if (!list.some(existing => existing.id === r.id)) {
-          list.push(formatResponseDTO(r));
-        }
-      });
-    } catch (dErr) {}
-
+    // In dev, include any memory cache
     if (postId && ResponsesService.responsesMemoryCache && ResponsesService.responsesMemoryCache.has(postId)) {
       const cached = ResponsesService.responsesMemoryCache.get(postId);
       cached.forEach(r => {
@@ -119,34 +120,39 @@ class ResponsesService {
       updated_at: new Date().toISOString()
     };
 
-    if (!ResponsesService.responsesMemoryCache) {
-      ResponsesService.responsesMemoryCache = new Map();
-    }
-    if (!ResponsesService.responsesMemoryCache.has(postId)) {
-      ResponsesService.responsesMemoryCache.set(postId, []);
-    }
-    ResponsesService.responsesMemoryCache.get(postId).push(responseData);
-
-    // Save to disk store as fallback
-    try {
-      const diskResponses = loadResponsesStore();
-      diskResponses.push(responseData);
-      saveResponsesStore(diskResponses);
-    } catch (sErr) {}
-
     let created = null;
-    try {
-      const res = await userClient
+    const res = await userClient
+      .from('responses')
+      .insert(responseData)
+      .select('*, anonymous_profiles(display_name, avatar_key)')
+      .maybeSingle();
+
+    if (res.data) {
+      created = res.data;
+    } else if (res.error) {
+      // Try plain insert if join select had RLS restrictions
+      const plainRes = await userClient
         .from('responses')
         .insert(responseData)
-        .select('*, anonymous_profiles(display_name, avatar_key)')
+        .select()
         .maybeSingle();
 
-      if (res.data) {
-        created = res.data;
+      if (plainRes.data) {
+        created = plainRes.data;
+      } else if (plainRes.error) {
+        console.error('❌ [ResponsesService.createResponse] Supabase error:', plainRes.error.message);
+        if (process.env.NODE_ENV !== 'production') {
+          // Dev fallback
+          if (!ResponsesService.responsesMemoryCache) ResponsesService.responsesMemoryCache = new Map();
+          if (!ResponsesService.responsesMemoryCache.has(postId)) ResponsesService.responsesMemoryCache.set(postId, []);
+          ResponsesService.responsesMemoryCache.get(postId).push(responseData);
+          const diskResponses = loadResponsesStore();
+          diskResponses.push(responseData);
+          saveResponsesStore(diskResponses);
+        } else {
+          throw new AppError(`Failed to save discussion response: ${plainRes.error.message}`, 500, plainRes.error.code || 'DATABASE_ERROR');
+        }
       }
-    } catch (e) {
-      console.warn('DB response creation notice:', e.message);
     }
 
     return formatResponseDTO(created || responseData, anonProfile);
@@ -171,7 +177,7 @@ class ResponsesService {
       .from('responses')
       .update({ content, updated_at: new Date().toISOString() })
       .eq('id', id)
-      .select('*, anonymous_profiles(anonymous_display_name, avatar_key)')
+      .select('*, anonymous_profiles(display_name, avatar_key)')
       .maybeSingle();
 
     if (updateErr || !updated) {
@@ -196,13 +202,13 @@ class ResponsesService {
       throw new ForbiddenError('You can only delete your own responses');
     }
 
-    const { error: deleteErr } = await userClient
+    const { error: delErr } = await userClient
       .from('responses')
       .delete()
       .eq('id', id);
 
-    if (deleteErr) {
-      throw new Error(`Failed to delete response: ${deleteErr.message}`);
+    if (delErr) {
+      throw new AppError(`Failed to delete response: ${delErr.message}`, 500, delErr.code || 'DATABASE_ERROR');
     }
 
     return { id, deleted: true };

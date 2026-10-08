@@ -59,6 +59,30 @@
       "status": "pending",
       "created_at": "2026-10-08T09:41:43.273Z",
       "updated_at": "2026-10-08T09:41:43.273Z"
+    },
+    "d953fa29-a088-45ce-8b8c-f1fe5d5cf9f4": {
+      "id": "d953fa29-a088-45ce-8b8c-f1fe5d5cf9f4",
+      "experience_post_id": "926fe0e3-179e-4d04-b2fc-7fbbe578c7cc",
+      "requester_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+      "requester_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+      "recipient_user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+      "recipient_anonymous_profile_id": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
+      "message": "Hi, I also bought too many books this semester.",
+      "status": "accepted",
+      "created_at": "2026-10-08T10:56:56.049Z",
+      "updated_at": "2026-10-08T10:57:48.270Z"
+    },
+    "ae369a66-eaaa-41be-92ca-484a14400fe0": {
+      "id": "ae369a66-eaaa-41be-92ca-484a14400fe0",
+      "experience_post_id": "24c149e7-75c7-4857-a399-e938f7fd897b",
+      "requester_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+      "requester_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+      "recipient_user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+      "recipient_anonymous_profile_id": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
+      "message": "Thanks for the walk tip!",
+      "status": "pending",
+      "created_at": "2026-10-08T10:58:34.805Z",
+      "updated_at": "2026-10-08T10:58:34.805Z"
     }
   },
   "conversations": {
@@ -105,6 +129,17 @@
       "participant2_anonymous_profile_id": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
       "status": "active",
       "created_at": "2026-10-08T09:41:32.696Z"
+    },
+    "2d66d704-26d1-4473-a0b0-6efa08d182e3": {
+      "id": "2d66d704-26d1-4473-a0b0-6efa08d182e3",
+      "request_id": "d953fa29-a088-45ce-8b8c-f1fe5d5cf9f4",
+      "experience_post_id": "926fe0e3-179e-4d04-b2fc-7fbbe578c7cc",
+      "participant1_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+      "participant1_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+      "participant2_user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+      "participant2_anonymous_profile_id": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
+      "status": "active",
+      "created_at": "2026-10-08T10:57:48.271Z"
     }
   },
   "messages": {
@@ -178,6 +213,24 @@
         "sender_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
         "content": "Thanks for sharing this. I went through something similar.",
         "created_at": "2026-10-08T09:41:33.688Z"
+      }
+    ],
+    "2d66d704-26d1-4473-a0b0-6efa08d182e3": [
+      {
+        "id": "c76cea15-d3bd-42ab-83ee-063f8951cb54",
+        "conversation_id": "2d66d704-26d1-4473-a0b0-6efa08d182e3",
+        "sender_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+        "sender_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+        "content": "Hi, I also bought too many books this semester.",
+        "created_at": "2026-10-08T10:56:56.049Z"
+      },
+      {
+        "id": "f20f379d-e8fb-4fe4-ade3-edb995046389",
+        "conversation_id": "2d66d704-26d1-4473-a0b0-6efa08d182e3",
+        "sender_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+        "sender_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+        "content": "Thanks for sharing this. I went through something similar.",
+        "created_at": "2026-10-08T10:57:50.045Z"
       }
     ]
   }

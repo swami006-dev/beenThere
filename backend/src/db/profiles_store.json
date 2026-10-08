@@ -47,14 +47,21 @@
       "userId": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
       "displayName": "Anonymous Panda",
       "avatarKey": "panda",
-      "updatedAt": "2026-10-08T09:41:43.272Z"
+      "updatedAt": "2026-10-08T10:58:34.804Z"
     },
     "fedd5232-dfd9-48be-99e0-1db0d17d1e31": {
       "profileId": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
       "userId": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
       "displayName": "Anonymous Moon",
       "avatarKey": "moon",
-      "updatedAt": "2026-10-08T09:41:41.677Z"
+      "updatedAt": "2026-10-08T10:58:27.857Z"
+    },
+    "d86be5c2-1fcc-4ecc-a928-b5b4504d588d": {
+      "profileId": "d86be5c2-1fcc-4ecc-a928-b5b4504d588d",
+      "userId": "15e7727b-6591-40dc-89f6-aef1488f9559",
+      "displayName": "StudyBear",
+      "avatarKey": "owl",
+      "updatedAt": "2026-10-08T10:00:28.119Z"
     }
   },
   "posts": {
@@ -129,6 +136,30 @@
       "title": "How do you handle exam burnout? 1791452500851",
       "category": "Academic",
       "updatedAt": "2026-10-08T09:41:41.366Z"
+    },
+    "926fe0e3-179e-4d04-b2fc-7fbbe578c7cc": {
+      "postId": "926fe0e3-179e-4d04-b2fc-7fbbe578c7cc",
+      "authorUserId": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+      "authorAnonymousProfileId": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
+      "title": "I keep overspending on books I never finish reading. 1791457",
+      "category": "College Life",
+      "updatedAt": "2026-10-08T10:56:52.239Z"
+    },
+    "f8fdc289-7fc9-4061-99ed-a0b9d864f18a": {
+      "postId": "f8fdc289-7fc9-4061-99ed-a0b9d864f18a",
+      "authorUserId": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+      "authorAnonymousProfileId": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+      "title": "Another independent reflection 1791457088055",
+      "category": "Academic",
+      "updatedAt": "2026-10-08T10:58:08.966Z"
+    },
+    "24c149e7-75c7-4857-a399-e938f7fd897b": {
+      "postId": "24c149e7-75c7-4857-a399-e938f7fd897b",
+      "authorUserId": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+      "authorAnonymousProfileId": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+      "title": "How do you handle exam burnout? 1791457104127",
+      "category": "Academic",
+      "updatedAt": "2026-10-08T10:58:24.883Z"
     }
   }
 }

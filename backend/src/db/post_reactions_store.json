@@ -54,5 +54,19 @@
     "user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
     "reaction_type": "helpful",
     "created_at": "2026-10-08T09:41:36.551Z"
+  },
+  {
+    "id": "4bce9694-8466-48cc-9e6e-3df0752d9858",
+    "post_id": "926fe0e3-179e-4d04-b2fc-7fbbe578c7cc",
+    "user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T10:58:03.612Z"
+  },
+  {
+    "id": "cd1d0547-336f-4920-9270-b98e251405b8",
+    "post_id": "926fe0e3-179e-4d04-b2fc-7fbbe578c7cc",
+    "user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T10:58:08.052Z"
   }
 ]

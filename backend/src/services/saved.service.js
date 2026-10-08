@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { supabase } = require('../db/supabase');
-const { BadRequestError, ForbiddenError } = require('../utils/errors');
+const { BadRequestError, ForbiddenError, AppError } = require('../utils/errors');
 const ExperiencesService = require('./experiences.service');
 const PostsService = require('./posts.service');
 
@@ -22,6 +22,8 @@ function loadStore() {
 
 function saveStore(items) {
   try {
+    const dir = path.dirname(STORE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(STORE_PATH, JSON.stringify(items, null, 2), 'utf8');
   } catch (e) {
     console.warn('Failed to write saved items store to file:', e.message);
@@ -34,43 +36,42 @@ class SavedService {
       return { savedItemIds: [], items: [] };
     }
 
+    const client = userClient || supabase;
+    const { data, error } = await client
+      .from('saved_items')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
     let savedRows = [];
 
-    // 1. Try querying Supabase
-    try {
-      const client = userClient || supabase;
-      const { data, error } = await client
-        .from('saved_items')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (!error && Array.isArray(data)) {
-        savedRows = data;
+    if (error) {
+      console.error('❌ [SavedService.listSaved] Supabase error:', error.message, error.details || '');
+      // Only permit disk fallback in development if table has not been created yet
+      if (process.env.NODE_ENV !== 'production' && error.code === 'PGRST205') {
+        console.warn('⚠️ [SavedService] Falling back to local disk store in non-production because saved_items table is not yet migrated.');
+        const store = loadStore();
+        savedRows = store.filter(item => item.user_id === user.id);
+      } else {
+        throw new AppError(`Failed to load saved items from database: ${error.message}`, 500, error.code || 'DATABASE_ERROR');
       }
-    } catch (e) {
-      console.warn('Supabase saved_items query notice:', e.message);
-    }
-
-    // 2. Fallback to persistent disk store if Supabase returned 0 rows or table not yet created
-    if (savedRows.length === 0) {
-      const store = loadStore();
-      savedRows = store.filter(item => item.user_id === user.id);
+    } else {
+      savedRows = Array.isArray(data) ? data : [];
     }
 
     const savedItemIds = savedRows.map(r => r.item_id);
 
-    // 3. Hydrate items
+    // Hydrate items
     const hydratedItems = [];
     for (const row of savedRows) {
       try {
         if (row.item_type === 'post') {
-          const post = await PostsService.getPostById(userClient, row.item_id).catch(() => null);
+          const post = await PostsService.getPostById(client, row.item_id).catch(() => null);
           if (post) {
             hydratedItems.push({ ...post, itemType: 'post', isPost: true, savedAt: row.created_at });
           }
         } else {
-          const exp = await ExperiencesService.getExperienceById(userClient, row.item_id).catch(() => null);
+          const exp = await ExperiencesService.getExperienceById(client, row.item_id).catch(() => null);
           if (exp) {
             hydratedItems.push({ ...exp, itemType: 'experience', isCanonicalCard: true, savedAt: row.created_at });
           }
@@ -95,11 +96,8 @@ class SavedService {
     }
 
     const normalizedType = itemType === 'post' ? 'post' : 'experience';
-
-    // 1. Disk store update (prevents duplicate rows)
-    const store = loadStore();
-    const existingIndex = store.findIndex(item => item.user_id === user.id && item.item_id === itemId);
     const now = new Date().toISOString();
+    const client = userClient || supabase;
 
     const record = {
       id: randomUUID(),
@@ -109,19 +107,34 @@ class SavedService {
       created_at: now
     };
 
-    if (existingIndex === -1) {
-      store.push(record);
-      saveStore(store);
-    }
+    // Primary: Supabase DB update
+    const { error } = await client
+      .from('saved_items')
+      .upsert(record, { onConflict: 'user_id, item_id' });
 
-    // 2. Supabase DB update
-    try {
-      const client = userClient || supabase;
-      await client
-        .from('saved_items')
-        .upsert(record, { onConflict: 'user_id, item_id' });
-    } catch (e) {
-      console.warn('Supabase saved_items insert notice:', e.message);
+    if (error) {
+      console.error('❌ [SavedService.saveItem] Supabase error:', error.message, error.details || '');
+      // Only permit disk fallback in development if table is missing
+      if (process.env.NODE_ENV !== 'production' && error.code === 'PGRST205') {
+        console.warn('⚠️ [SavedService] Falling back to local disk store in non-production because saved_items table is not yet migrated.');
+        const store = loadStore();
+        const existingIndex = store.findIndex(item => item.user_id === user.id && item.item_id === itemId);
+        if (existingIndex === -1) {
+          store.push(record);
+          saveStore(store);
+        }
+      } else {
+        throw new AppError(`Failed to save experience in database: ${error.message}`, 500, error.code || 'DATABASE_ERROR');
+      }
+    } else {
+      // Sync local store cache if present
+      try {
+        const store = loadStore();
+        if (!store.some(item => item.user_id === user.id && item.item_id === itemId)) {
+          store.push(record);
+          saveStore(store);
+        }
+      } catch (e) {}
     }
 
     return {
@@ -140,21 +153,29 @@ class SavedService {
       throw new BadRequestError('itemId is required');
     }
 
-    // 1. Disk store update
-    const store = loadStore();
-    const filtered = store.filter(item => !(item.user_id === user.id && item.item_id === itemId));
-    saveStore(filtered);
+    const client = userClient || supabase;
+    const { error } = await client
+      .from('saved_items')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('item_id', itemId);
 
-    // 2. Supabase DB update
-    try {
-      const client = userClient || supabase;
-      await client
-        .from('saved_items')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('item_id', itemId);
-    } catch (e) {
-      console.warn('Supabase saved_items delete notice:', e.message);
+    if (error) {
+      console.error('❌ [SavedService.unsaveItem] Supabase error:', error.message, error.details || '');
+      if (process.env.NODE_ENV !== 'production' && error.code === 'PGRST205') {
+        console.warn('⚠️ [SavedService] Falling back to local disk store in non-production because saved_items table is not yet migrated.');
+        const store = loadStore();
+        const filtered = store.filter(item => !(item.user_id === user.id && item.item_id === itemId));
+        saveStore(filtered);
+      } else {
+        throw new AppError(`Failed to unsave experience from database: ${error.message}`, 500, error.code || 'DATABASE_ERROR');
+      }
+    } else {
+      try {
+        const store = loadStore();
+        const filtered = store.filter(item => !(item.user_id === user.id && item.item_id === itemId));
+        saveStore(filtered);
+      } catch (e) {}
     }
 
     return {
