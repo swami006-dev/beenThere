@@ -1,0 +1,37 @@
+{
+  "name": "beenthere-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Beenthere - Anonymous student peer-support platform",
+  "main": "src/app.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "seed:experiences": "node src/db/seedExperiences.js"
+  },
+  "keywords": [
+    "beenthere",
+    "peer-support",
+    "express",
+    "supabase"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@langchain/core": "^1.2.17",
+    "@langchain/google-genai": "^2.3.2",
+    "@langchain/groq": "^1.3.1",
+    "@supabase/supabase-js": "^2.117.2",
+    "@xenova/transformers": "^2.17.2",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "nodemon": "^1.14.10"
+  },
+  "allowScripts": {
+    "nodemon@1.14.10": true
+  }
+}
