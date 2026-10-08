@@ -7,6 +7,7 @@ const router = express.Router();
 router.post('/requests', authenticate, ConversationsController.createRequest);
 router.get('/requests', authenticate, ConversationsController.listRequests);
 router.patch('/requests/:requestId', authenticate, ConversationsController.respondRequest);
+router.post('/requests/:requestId/respond', authenticate, ConversationsController.respondRequest);
 
 router.get('/', authenticate, ConversationsController.listConversations);
 router.get('/:id', authenticate, ConversationsController.getConversation);
