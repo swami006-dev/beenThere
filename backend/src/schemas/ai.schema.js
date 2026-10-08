@@ -31,6 +31,7 @@ const matchInputSchema = z.object({
   content: z.string().min(1, 'Content is required'),
   category: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  excludePostId: z.string().optional(),
   topK: z.number().optional().default(5)
 });
 

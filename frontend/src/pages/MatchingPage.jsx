@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from '../context/RouterContext';
+import { useAuth } from '../context/AuthContext';
 import { AppNavbar } from '../components/AppNavbar';
 import { Footer } from '../components/Footer';
 import { CalmLoader } from '../components/CalmLoader';
+import { RequestConversationModal } from '../components/RequestConversationModal';
 import { api } from '../config/api';
-import { mapExperienceToUI } from '../utils/dataMappers';
+import { mapExperienceToUI, mapPostToUI } from '../utils/dataMappers';
 
 export function MatchingPage() {
   const { routeState, navigate } = useRouter();
+  const { isAuthenticated } = useAuth();
   const searchParams = new URLSearchParams(window.location.search);
   const urlPostId = searchParams.get('postId');
   const createdPostId = urlPostId || routeState?.postId;
@@ -33,8 +36,10 @@ export function MatchingPage() {
   const topic = resolvedTopic || routeState?.topic || 'Academic';
   const aiAnalysis = resolvedAi || routeState?.aiAnalysis;
 
-  const [experiences, setExperiences] = useState([]);
+  const [canonicalExperience, setCanonicalExperience] = useState(null);
+  const [studentPosts, setStudentPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPostForChat, setSelectedPostForChat] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -44,25 +49,31 @@ export function MatchingPage() {
       content: userInput,
       category: topic,
       tags: aiAnalysis?.tags || [topic],
+      excludePostId: createdPostId,
       topK: 5
     }).then(res => {
       if (!isMounted) return;
-      const matches = res?.matches || [];
-      if (matches.length > 0) {
-        const mappedMatches = matches.map(mapExperienceToUI);
-        // Exclude the current student post if created
-        const filtered = mappedMatches.filter(e => e.id !== createdPostId);
-        // Strictly cap at Top 5 matches
-        setExperiences(filtered.slice(0, 5));
+
+      // 1. Process Canonical Experience Card
+      if (res?.canonicalExperience) {
+        setCanonicalExperience(mapExperienceToUI(res.canonicalExperience));
       } else {
-        setExperiences([]);
+        setCanonicalExperience(null);
       }
+
+      // 2. Process Real Student Posts
+      const postsList = Array.isArray(res?.studentPosts) ? res.studentPosts : [];
+      const mappedPosts = postsList
+        .filter(p => p.id !== createdPostId)
+        .map(mapPostToUI);
+      setStudentPosts(mappedPosts);
+
       setLoading(false);
     }).catch(err => {
       if (!isMounted) return;
       console.warn('Semantic AI match error:', err.message);
-      // NEVER fetch all 36 cards on matching page error - show empty/no-match flow instead
-      setExperiences([]);
+      setCanonicalExperience(null);
+      setStudentPosts([]);
       setLoading(false);
     });
 
@@ -71,14 +82,21 @@ export function MatchingPage() {
     };
   }, [createdPostId, userInput, topic]);
 
-  // Determine if a valid semantic match exists
-  const hasMatch = experiences.length > 0;
+  const hasAnyMatch = canonicalExperience || studentPosts.length > 0;
 
   const handleStartConversation = () => {
     if (createdPostId) {
-      navigate(`/experience/${createdPostId}`);
+      navigate(`/post/${createdPostId}`);
     } else {
       navigate('/share');
+    }
+  };
+
+  const handleTalkPrivately = (post) => {
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=/matching?postId=${createdPostId || ''}`);
+    } else {
+      setSelectedPostForChat(post);
     }
   };
 
@@ -93,22 +111,22 @@ export function MatchingPage() {
           {loading ? (
             <CalmLoader 
               label="Finding people who've been here before..." 
-              subtext="We're looking for experiences that may feel familiar." 
+              subtext="We're looking for guidance and reflections that may feel familiar." 
               minHeight="400px"
             />
           ) : (
             <div className="matching-flow-wrapper fade-in">
 
-              {/* 1. AI UNDERSTANDING SECTION (Section 3) */}
+              {/* 1. AI UNDERSTANDING SECTION */}
               <div className="ai-understanding-banner" style={{
                 backgroundColor: 'var(--surface-primary)',
                 border: '1px solid var(--accent-mint-border)',
-                borderRadius: '6px',
+                borderRadius: '8px',
                 padding: '24px',
                 marginBottom: '32px'
               }}>
-                <div className="section-label" style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '1.1rem' }}>🧠</span>
+                <div className="section-label" style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.15rem' }}>🧠</span>
                   <span className="label-text" style={{ color: 'var(--accent-mint)', fontWeight: 600, letterSpacing: '0.05em' }}>
                     WE UNDERSTOOD
                   </span>
@@ -159,112 +177,187 @@ export function MatchingPage() {
                 </div>
               </div>
 
-              {/* 2. MATCHING RESULTS OR NO-MATCH FLOW */}
-              {hasMatch ? (
-                /* CASE A — RELEVANT MATCHES FOUND */
-                <div className="similar-experiences-view fade-in">
-                  
-                  <header className="results-header" style={{ marginBottom: '24px' }}>
-                    <div className="section-label" style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '1.1rem' }}>🤝</span>
-                      <span className="label-text" style={{ textTransform: 'uppercase', fontWeight: 600 }}>
-                        PEOPLE WHO'VE BEEN HERE BEFORE
+              {/* 2. CANONICAL EXPERIENCE CARD (WHAT OTHERS HAVE LEARNED) */}
+              {canonicalExperience && (
+                <section className="canonical-guidance-section" style={{ marginBottom: '36px' }}>
+                  <header style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '1.15rem' }}>💡</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-mint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        WHAT OTHERS HAVE LEARNED
                       </span>
                     </div>
-                    <h1 className="results-title" style={{ fontSize: '1.8rem', fontWeight: 500, marginBottom: '6px' }}>
-                      We found experiences that may feel familiar.
-                    </h1>
-                    <p className="results-subtext" style={{ color: 'var(--text-secondary)' }}>
-                      These students stood in a similar place. See what they discovered.
+                    <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', margin: 0 }}>
+                      Curated peer guidance synthesized from students who navigated this situation.
                     </p>
                   </header>
 
-                  <div className="matching-results-list" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {experiences.map((item, idx) => (
+                  <article 
+                    className="canonical-card"
+                    style={{
+                      backgroundColor: 'var(--surface-primary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      padding: '24px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {canonicalExperience.category || topic}
+                      </span>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--accent-mint)',
+                        backgroundColor: 'rgba(123, 224, 179, 0.1)',
+                        border: '1px solid var(--accent-mint-border)',
+                        padding: '3px 10px',
+                        borderRadius: '12px',
+                        fontWeight: 500
+                      }}>
+                        Curated Guidance
+                      </span>
+                    </div>
+
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '10px', lineHeight: '1.35' }}>
+                      {canonicalExperience.title}
+                    </h2>
+
+                    <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '16px' }}>
+                      {canonicalExperience.excerpt || canonicalExperience.whatHappened}
+                    </p>
+
+                    {Array.isArray(canonicalExperience.whatHelped) && canonicalExperience.whatHelped.length > 0 && (
+                      <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '14px 18px', borderRadius: '6px', marginBottom: '18px' }}>
+                        <span style={{ fontSize: '0.74rem', color: 'var(--accent-mint)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          What Helped:
+                        </span>
+                        <ul style={{ margin: '8px 0 0', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {canonicalExperience.whatHelped.map((bullet, bIdx) => (
+                            <li key={bIdx} style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: '1.5' }}>
+                              {bullet}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '16px', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
+                      <button
+                        type="button"
+                        className="btn-read-story"
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: '1px solid var(--accent-mint-border)',
+                          color: 'var(--accent-mint)',
+                          padding: '8px 18px',
+                          borderRadius: '4px',
+                          fontSize: '0.86rem',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                        onClick={() => navigate(`/experience/${canonicalExperience.id}`)}
+                      >
+                        <span>Read full guidance →</span>
+                      </button>
+                    </div>
+                  </article>
+                </section>
+              )}
+
+              {/* 3. STUDENTS WHO'VE BEEN HERE (REAL PEER REFLECTIONS) */}
+              <section className="peer-reflections-section" style={{ marginBottom: '36px' }}>
+                <header style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '1.15rem' }}>🤝</span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      STUDENTS WHO'VE BEEN HERE
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', margin: 0 }}>
+                    Real reflections from students facing similar challenges. You can read their reflections or connect privately.
+                  </p>
+                </header>
+
+                {studentPosts.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    {studentPosts.map((post, idx) => (
                       <article 
-                        key={item.id || idx} 
-                        className="similar-experience-card"
+                        key={post.id || idx}
                         style={{
                           backgroundColor: 'var(--surface-primary)',
                           border: '1px solid var(--border)',
-                          borderRadius: '6px',
-                          padding: '24px',
-                          cursor: 'pointer',
+                          borderRadius: '8px',
+                          padding: '20px 24px',
                           transition: 'border-color 0.2s ease'
                         }}
-                        onClick={() => navigate(`/experience/${item.id}`)}
                       >
-                        <div className="similar-card-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            {item.category || topic}
-                          </span>
-                          <span className="relevance-badge" style={{
-                            fontSize: '0.76rem',
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '1rem' }}>{post.anonymousAvatar || '🦉'}</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+                              {post.author}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                              · {post.timeAgo}
+                            </span>
+                          </div>
+
+                          <span style={{
+                            fontSize: '0.74rem',
                             color: 'var(--accent-mint)',
-                            backgroundColor: 'rgba(123, 224, 179, 0.1)',
-                            border: '1px solid var(--accent-mint-border)',
-                            padding: '3px 10px',
-                            borderRadius: '12px',
-                            fontWeight: 500
+                            backgroundColor: 'rgba(123, 224, 179, 0.08)',
+                            padding: '2px 8px',
+                            borderRadius: '4px'
                           }}>
-                            {item.relevanceLabel || 'Similar experience'}
+                            {post.relevanceLabel || 'Similar reflection'}
                           </span>
                         </div>
 
-                        <h3 style={{ fontSize: '1.15rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '10px', lineHeight: '1.4' }}>
-                          {item.title}
-                        </h3>
-
-                        <blockquote className="similar-quote-text" style={{ fontStyle: 'italic', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: '1.5' }}>
-                          “{item.excerpt || item.whatHappened}”
+                        <blockquote style={{
+                          margin: '12px 0 16px',
+                          paddingLeft: '14px',
+                          borderLeft: '2px solid var(--accent-mint-border)',
+                          fontStyle: 'italic',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.96rem',
+                          lineHeight: '1.55'
+                        }}>
+                          “{post.content}”
                         </blockquote>
 
-                        {item.whatHelped && (
-                          <div style={{ marginBottom: '14px', backgroundColor: 'var(--surface-subtle)', padding: '10px 14px', borderRadius: '4px' }}>
-                            <span style={{ fontSize: '0.74rem', color: 'var(--accent-mint)', fontWeight: 600, textTransform: 'uppercase' }}>What Helped:</span>
-                            <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                              {item.whatHelped}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="similar-card-actions" style={{ display: 'flex', gap: '12px', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-subtle)' }}>
-                          <button 
-                            type="button" 
-                            className="btn-read-story"
+                        <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
+                          <button
+                            type="button"
                             style={{
                               backgroundColor: 'transparent',
                               border: '1px solid var(--border)',
                               color: 'var(--text-primary)',
-                              padding: '8px 16px',
+                              padding: '7px 14px',
                               borderRadius: '4px',
-                              fontSize: '0.85rem',
+                              fontSize: '0.84rem',
                               cursor: 'pointer'
                             }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/experience/${item.id}`);
-                            }}
+                            onClick={() => navigate(`/post/${post.id}`)}
                           >
-                            <span>Read experience →</span>
+                            <span>Read reflection →</span>
                           </button>
 
-                          <button 
-                            type="button" 
-                            className="btn-talk-privately"
+                          <button
+                            type="button"
                             style={{
                               backgroundColor: 'var(--surface-elevated)',
                               border: '1px solid var(--accent-mint-border)',
                               color: 'var(--accent-mint)',
-                              padding: '8px 16px',
+                              padding: '7px 14px',
                               borderRadius: '4px',
-                              fontSize: '0.85rem',
-                              cursor: 'pointer'
+                              fontSize: '0.84rem',
+                              cursor: 'pointer',
+                              fontWeight: 500
                             }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/experience/${item.id}`);
-                            }}
+                            onClick={() => handleTalkPrivately(post)}
                           >
                             <span>Talk privately →</span>
                           </button>
@@ -272,78 +365,59 @@ export function MatchingPage() {
                       </article>
                     ))}
                   </div>
-
-                  {/* 3. IF MATCHES ARE NOT USEFUL / START OWN THREAD (Section 7 & 9) */}
-                  <div className="matching-footer-action-box" style={{
-                    marginTop: '40px',
-                    padding: '28px 24px',
-                    backgroundColor: 'var(--surface-subtle)',
+                ) : (
+                  /* EMPTY STATE FOR STUDENT POSTS */
+                  <div style={{
+                    backgroundColor: 'var(--surface-primary)',
                     border: '1px dashed var(--border)',
-                    borderRadius: '6px',
+                    borderRadius: '8px',
+                    padding: '28px 20px',
                     textAlign: 'center'
                   }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🌱</div>
                     <h3 style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                      Don't see yourself in these experiences?
+                      No students have shared something closely related yet.
                     </h3>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '18px' }}>
-                      That's okay. Your experience can start a new conversation.
+                    <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto 18px', lineHeight: '1.5' }}>
+                      Your experience could be the first to open this door for someone else.
                     </p>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       className="btn-auth-primary"
-                      style={{ width: 'auto', padding: '12px 24px', margin: '0 auto', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                      style={{ width: 'auto', padding: '10px 20px', margin: '0 auto', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                       onClick={handleStartConversation}
                     >
                       <span>Start your own conversation →</span>
                     </button>
                   </div>
+                )}
+              </section>
 
-                </div>
-              ) : (
-                /* CASE B — NO MATCH FLOW (Section 8 & 20) */
-                <div className="no-match-view fade-in" style={{ padding: '20px 0' }}>
-                  
-                  <header className="results-header" style={{ marginBottom: '28px', textAlign: 'center' }}>
-                    <div className="section-label" style={{ marginBottom: '10px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '1.2rem' }}>🤝</span>
-                      <span className="label-text" style={{ textTransform: 'uppercase', fontWeight: 600 }}>
-                        NO ONE HAS SHARED A CLOSELY RELATED EXPERIENCE YET
-                      </span>
-                    </div>
-                    <h1 className="results-title" style={{ fontSize: '1.8rem', fontWeight: 400, marginBottom: '10px', color: 'var(--text-primary)' }}>
-                      We couldn't find an experience that closely matches what you're going through.
-                    </h1>
-                    <p className="results-subtext" style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>
-                      Your experience could be the first.
-                    </p>
-                  </header>
-
-                  <div style={{
-                    backgroundColor: 'var(--surface-primary)',
-                    border: '1px dashed var(--accent-mint-border)',
-                    borderRadius: '6px',
-                    padding: '36px 24px',
-                    textAlign: 'center',
-                    margin: '20px 0 32px'
-                  }}>
-                    <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🌱</div>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 500, marginBottom: '8px', color: 'var(--text-primary)' }}>
-                      Start this conversation
-                    </h3>
-                    <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 24px', lineHeight: '1.5' }}>
-                      Other students facing this situation will be able to read your post and respond with their own support and perspective.
-                    </p>
-
-                    <button 
-                      type="button" 
-                      className="btn-auth-primary"
-                      style={{ padding: '14px 28px', fontSize: '1rem', width: 'auto', margin: '0 auto', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                      onClick={handleStartConversation}
-                    >
-                      <span>Start this conversation →</span>
-                    </button>
-                  </div>
-
+              {/* 4. IF NEITHER MATCHES FLOW */}
+              {!hasAnyMatch && (
+                <div style={{
+                  backgroundColor: 'var(--surface-primary)',
+                  border: '1px dashed var(--accent-mint-border)',
+                  borderRadius: '8px',
+                  padding: '36px 24px',
+                  textAlign: 'center',
+                  marginTop: '20px'
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🌱</div>
+                  <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    No closely related experience yet.
+                  </h2>
+                  <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 20px', lineHeight: '1.5' }}>
+                    Your experience could be the first. Starting this conversation helps other students find solidarity when they face this too.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-auth-primary"
+                    style={{ padding: '12px 24px', width: 'auto', margin: '0 auto', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                    onClick={handleStartConversation}
+                  >
+                    <span>Start your own conversation →</span>
+                  </button>
                 </div>
               )}
 
@@ -352,6 +426,15 @@ export function MatchingPage() {
 
         </div>
       </main>
+
+      {/* 1-to-1 CONVERSATION MODAL TARGETED AT REAL STUDENT POST */}
+      {selectedPostForChat && (
+        <RequestConversationModal
+          isOpen={!!selectedPostForChat}
+          onClose={() => setSelectedPostForChat(null)}
+          experience={selectedPostForChat}
+        />
+      )}
 
       <Footer 
         onScrollTop={() => window.scrollTo({ top: 0, behavior: 'smooth' })}

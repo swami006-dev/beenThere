@@ -183,6 +183,16 @@ class PostsService {
 
     const result = formatPostDTO(created || postData, anonProfile);
 
+    // Generate and persist 384D vector embedding for the student post to enable semantic peer matching
+    try {
+      const EmbeddingService = require('./embedding.service');
+      EmbeddingService.generateEmbedding(content).then(vec => {
+        if (vec) {
+          EmbeddingService.storePostVector(result.id, vec);
+        }
+      }).catch(err => console.warn('Post embedding generation notice:', err.message));
+    } catch (e) {}
+
     if (!PostsService.postsMemoryCache) {
       PostsService.postsMemoryCache = new Map();
     }

@@ -24,7 +24,9 @@ class AiController {
         content: validated.content,
         category: validated.category,
         tags: validated.tags,
-        topK: validated.topK || 5
+        excludePostId: validated.excludePostId,
+        topK: validated.topK || 5,
+        userClient: req.userClient
       });
       return successResponse(res, result, 200);
     } catch (err) {

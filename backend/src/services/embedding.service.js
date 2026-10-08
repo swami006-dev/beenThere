@@ -18,13 +18,15 @@ async function getExtractor() {
   return pipelinePromise;
 }
 
-// Memory store for precomputed 384D Experience Card vectors (Performance Optimization Cache)
-// Key: cardId -> Value: Array of 384 numbers
+// Memory store for precomputed 384D Experience Card vectors & Student Post vectors
+// Key: cardId/postId -> Value: Array of 384 numbers
 const experienceVectorsStore = new Map();
+const postVectorsStore = new Map();
 const queryEmbeddingCache = new Map();
 
-// Persistent JSON file path for vector storage backup across restarts
+// Persistent JSON file paths for vector storage backup across restarts
 const EMBEDDINGS_FILE_PATH = path.join(__dirname, '../db/experience_embeddings.json');
+const POST_EMBEDDINGS_FILE_PATH = path.join(__dirname, '../db/post_embeddings.json');
 
 function buildCardText(card) {
   const title = card.title || card.excerpt?.substring(0, 50) || '';
@@ -83,6 +85,40 @@ function loadPersistentStoreFromFile() {
   return 0;
 }
 
+function savePostStoreToFile() {
+  try {
+    const obj = {};
+    for (const [key, val] of postVectorsStore.entries()) {
+      obj[key] = val;
+    }
+    fs.writeFileSync(POST_EMBEDDINGS_FILE_PATH, JSON.stringify(obj, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('⚠️ [POST EMBEDDING PERSISTENCE] Failed to write post embeddings file:', err.message);
+  }
+}
+
+function loadPostStoreFromFile() {
+  try {
+    if (fs.existsSync(POST_EMBEDDINGS_FILE_PATH)) {
+      const content = fs.readFileSync(POST_EMBEDDINGS_FILE_PATH, 'utf8');
+      const obj = JSON.parse(content);
+      let loaded = 0;
+      for (const [key, val] of Object.entries(obj)) {
+        if (Array.isArray(val) && val.length === 384) {
+          postVectorsStore.set(key, val);
+          loaded++;
+        }
+      }
+      if (loaded > 0) {
+        return loaded;
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ [POST EMBEDDING PERSISTENCE] Failed to load post embeddings file:', err.message);
+  }
+  return 0;
+}
+
 class EmbeddingService {
   static get MODEL_NAME() {
     return 'Xenova/all-MiniLM-L6-v2';
@@ -97,6 +133,7 @@ class EmbeddingService {
    */
   static clearMemoryCache() {
     experienceVectorsStore.clear();
+    postVectorsStore.clear();
     queryEmbeddingCache.clear();
     console.log('🧹 [EMBEDDING] In-memory vector cache cleared.');
   }
@@ -398,6 +435,107 @@ class EmbeddingService {
       matchType: 'semantic_vector',
       modelUsed: this.MODEL_NAME,
       dimension: this.VECTOR_DIMENSION
+    };
+  }
+
+  /**
+   * Load post vectors from persistent file backup
+   */
+  static loadPostEmbeddings() {
+    return loadPostStoreFromFile();
+  }
+
+  /**
+   * Store post vector in persistent memory & file backup
+   */
+  static async storePostVector(postId, vector) {
+    if (!postId || !Array.isArray(vector) || vector.length !== 384) return;
+    postVectorsStore.set(postId, vector);
+    savePostStoreToFile();
+  }
+
+  /**
+   * Search real anonymous Student Posts semantically
+   * (Separated cleanly from Canonical Experience Cards)
+   */
+  static async searchSemanticPosts({ queryText, queryVector = null, category, tags = [], excludePostId = null, topK = 3, minThreshold = 0.28, userClient = supabase }) {
+    this.loadPostEmbeddings();
+
+    const vectorToUse = queryVector || await this.generateEmbedding(queryText);
+    if (!vectorToUse) return { matches: [] };
+
+    // Fetch approved posts
+    let posts = [];
+    try {
+      const { data: dbPosts, error } = await userClient
+        .from('posts')
+        .select('*, anonymous_profiles(display_name, avatar_key)')
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(dbPosts)) {
+        posts = dbPosts;
+      }
+    } catch (e) {
+      console.warn('searchSemanticPosts db fetch warning:', e.message);
+    }
+
+    // Include memory cached posts if present
+    const PostsService = require('./posts.service');
+    if (PostsService.postsMemoryCache) {
+      for (const [id, cached] of PostsService.postsMemoryCache.entries()) {
+        if (!posts.some(p => p.id === id) && (cached.status === 'approved' || !cached.status)) {
+          posts.push(cached);
+        }
+      }
+    }
+
+    if (posts.length === 0) {
+      return { matches: [] };
+    }
+
+    const scoredPosts = [];
+    for (const post of posts) {
+      // Exclude the student's own post
+      if (excludePostId && post.id === excludePostId) continue;
+      if (!post.content || !post.content.trim()) continue;
+
+      let postVec = postVectorsStore.get(post.id);
+      if (!postVec) {
+        postVec = await this.generateEmbedding(post.content);
+        if (postVec) {
+          postVectorsStore.set(post.id, postVec);
+          savePostStoreToFile();
+        }
+      }
+
+      if (!postVec) continue;
+
+      const similarity = dotProduct(vectorToUse, postVec);
+
+      // Enforce minimum similarity threshold so unrelated posts are NEVER returned
+      if (similarity >= minThreshold) {
+        const joinProfile = post.anonymous_profiles || post.anonymous_profile || {};
+        const author = joinProfile.display_name || joinProfile.anonymous_display_name || post.anonymousDisplayName || 'Anonymous Student';
+        const avatarKey = joinProfile.avatar_key || post.avatarKey || 'owl';
+
+        scoredPosts.push({
+          id: post.id,
+          content: post.content,
+          category: post.category || 'General',
+          author,
+          avatarKey,
+          createdAt: post.created_at || new Date().toISOString(),
+          similarity,
+          relevanceLabel: similarity > 0.45 ? 'Highly relevant' : 'Similar student reflection'
+        });
+      }
+    }
+
+    scoredPosts.sort((a, b) => b.similarity - a.similarity);
+
+    return {
+      matches: scoredPosts.slice(0, topK)
     };
   }
 }

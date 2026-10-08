@@ -177,10 +177,14 @@ export function ExplorePage() {
                         className="entry-read-link"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/experience/${item.id}`);
+                          if (item.isPost) {
+                            navigate(`/post/${item.id}`);
+                          } else {
+                            navigate(`/experience/${item.id}`);
+                          }
                         }}
                       >
-                        <span>Read experience</span>
+                        <span>{item.isPost ? 'Read reflection' : 'Read guidance'}</span>
                         <span className="arrow" aria-hidden="true">→</span>
                       </button>
                     </div>

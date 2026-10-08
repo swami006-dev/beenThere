@@ -1,27 +1,29 @@
 /**
- * Data mapping utilities to bridge backend API response schemas with existing frontend UI component expectations.
+ * Data mapping utilities cleanly separating:
+ * 1. Canonical Experience Cards (Curated institutional peer guidance)
+ * 2. Student Posts (Individual authentic anonymous reflections)
  */
 
 export function mapExperienceToUI(item) {
   if (!item) return null;
 
   const id = item.id || `exp-${Math.random().toString(36).substring(2, 7)}`;
-  const title = item.title || item.excerpt || 'Anonymous Reflection';
-  const categoryLabel = item.category || item.categoryLabel || 'General Support';
+  const title = item.title || item.excerpt || 'Curated Student Experience';
+  const categoryLabel = item.category || item.categoryLabel || 'General';
   
-  const excerpt = item.excerpt || item.content || '';
-  const whatHappened = item.whatHappened || item.what_happened || item.content || excerpt || 'Sharing an experience with the community.';
-  const whatChanged = item.whatChanged || item.what_changed || 'Reflecting on the steps taken and small mindset shifts over time.';
+  const excerpt = item.excerpt || item.situation || item.whatHappened || item.what_happened || '';
+  const whatHappened = item.whatHappened || item.what_happened || excerpt || '';
+  const whatChanged = item.whatChanged || item.what_changed || '';
   
-  let whatHelped = item.whatHelped || item.what_helped || ['Talking to peers who understand', 'Taking things one day at a time'];
+  let whatHelped = item.whatHelped || item.what_helped || [];
   if (typeof whatHelped === 'string') {
-    whatHelped = [whatHelped];
+    whatHelped = whatHelped.split(/\s*;\s*|\n+/).filter(Boolean);
+  } else if (!Array.isArray(whatHelped)) {
+    whatHelped = [];
   }
 
-  const whereIAmNow = item.whereIAmNow || item.where_i_am_now || 'Still learning, but feeling much more grounded.';
+  const whereIAmNow = item.whereIAmNow || item.where_i_am_now || '';
   const tags = Array.isArray(item.tags) && item.tags.length > 0 ? item.tags : [categoryLabel];
-  const author = item.anonymousDisplayName || item.author || 'Anonymous Peer';
-  const context = item.academicContext || item.context || 'Student Reflection';
   const helpfulCount = typeof item.helpfulCount === 'number' ? item.helpfulCount : 12;
 
   return {
@@ -30,8 +32,8 @@ export function mapExperienceToUI(item) {
     categoryLabel,
     category: categoryLabel,
     tags,
-    author,
-    context,
+    author: 'Curated Peer Guidance',
+    context: 'BeenThere Collective',
     excerpt,
     openingQuote: title,
     whatHappened,
@@ -39,9 +41,10 @@ export function mapExperienceToUI(item) {
     whatHelped,
     whereIAmNow,
     helpfulCount,
-    readTime: '3 min read',
-    timeAgo: 'Recently shared',
-    createdAt: item.createdAt || new Date().toISOString()
+    readTime: item.readTime || '3 min read',
+    timeAgo: 'Curated knowledge',
+    createdAt: item.createdAt || new Date().toISOString(),
+    isCanonicalCard: true
   };
 }
 
@@ -51,9 +54,10 @@ export function mapPostToUI(post) {
   const id = post.id || `post-${Math.random().toString(36).substring(2, 7)}`;
   const content = post.content || '';
   const categoryLabel = post.category || 'General';
-  const author = post.anonymousDisplayName || post.author || 'Anonymous Student';
-  const avatar = post.avatarKey ? (post.avatarKey === 'moon' ? '🌙' : post.avatarKey === 'star' ? '⭐' : '🦉') : '🦉';
-  const timeAgo = post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Just now';
+  const author = post.anonymousDisplayName || post.author || post.anonymous_profiles?.display_name || 'Anonymous Student';
+  const avatarKey = post.avatarKey || post.anonymous_profiles?.avatar_key || 'owl';
+  const avatar = avatarKey === 'moon' ? '🌙' : avatarKey === 'star' ? '⭐' : avatarKey === 'panda' ? '🐼' : '🦉';
+  const timeAgo = post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Recently';
 
   return {
     id,
@@ -65,16 +69,15 @@ export function mapPostToUI(post) {
     category: categoryLabel,
     tags: Array.isArray(post.tags) && post.tags.length > 0 ? post.tags : [categoryLabel],
     author,
+    anonymousDisplayName: author,
+    avatarKey,
     anonymousAvatar: avatar,
-    context: post.academicContext || 'Student',
-    whatHappened: content,
-    whatChanged: 'Gained perspective by opening up.',
-    whatHelped: ['Reaching out', 'Peer connection'],
-    whereIAmNow: 'Processing step by step.',
+    context: 'College student',
     status: post.status || 'approved',
-    helpfulCount: 0,
-    readTime: '2 min read',
+    similarity: post.similarity,
+    relevanceLabel: post.relevanceLabel,
     timeAgo,
-    createdAt: post.createdAt || new Date().toISOString()
+    createdAt: post.createdAt || post.created_at || new Date().toISOString(),
+    isPost: true
   };
 }

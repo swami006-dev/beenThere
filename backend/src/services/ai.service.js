@@ -317,96 +317,76 @@ Extract:
   }
 
   /**
-   * AI FEATURE 2: 🤝 REAL SEMANTIC EXPERIENCE MATCHING (pgvector / 384D text embeddings + fallback)
+   * AI FEATURE 2: 🤝 UNIFIED SEMANTIC MATCHING
+   * 1. Finds the most relevant Canonical Experience Card (institutional guidance)
+   * 2. Finds semantically similar real Student Posts (peer reflections for 1-to-1 connection)
    */
-  static async matchExperiences({ content, category, tags = [], topK = 5 }) {
+  static async matchExperiences({ content, category, tags = [], excludePostId = null, topK = 5, userClient = supabase }) {
     if (!content || !content.trim()) {
-      return { matches: [], matchType: 'no_match' };
+      return {
+        canonicalExperience: null,
+        studentPosts: [],
+        hasCanonicalMatch: false,
+        hasStudentMatch: false,
+        matches: [],
+        matchType: 'no_match'
+      };
     }
 
     const EmbeddingService = require('./embedding.service');
-
-    // 1. TRY REAL EMBEDDING SEMANTIC MATCHING (Xenova/all-MiniLM-L6-v2 384D Vector Search)
+    let queryVector = null;
     try {
-      const realMatchResult = await EmbeddingService.searchSemanticMatches({
+      queryVector = await EmbeddingService.generateEmbedding(content);
+    } catch (e) {
+      console.warn('Query embedding generation warning:', e.message);
+    }
+
+    // 1. SEARCH CANONICAL EXPERIENCE CARDS (Institutional Guidance)
+    let canonicalExperience = null;
+    try {
+      const canonicalResult = await EmbeddingService.searchSemanticMatches({
         queryText: content,
         category,
         tags,
-        topK
+        topK: 1,
+        minThreshold: 0.22
       });
 
-      if (realMatchResult && realMatchResult.matches.length > 0) {
-        console.log(`🎯 [SEMANTIC EMBEDDING MATCH SUCCESS] model: ${realMatchResult.modelUsed || EmbeddingService.MODEL_NAME} | dimension: ${realMatchResult.dimension || 384} | matches: ${realMatchResult.matches.length}`);
-        return realMatchResult;
+      if (canonicalResult && Array.isArray(canonicalResult.matches) && canonicalResult.matches.length > 0) {
+        canonicalExperience = canonicalResult.matches[0];
       }
     } catch (err) {
-      console.warn(`⚠️ [SEMANTIC_MATCH_FAILED] FALLBACK=category_tag | Error: ${err.message}`);
+      console.warn('Canonical match error:', err.message);
     }
 
-    // 2. FALLBACK MATCHING: Category + Tag Matching
-    console.log('🔄 Executing category + tag fallback matching...');
-    let rawCards = [];
+    // 2. SEARCH REAL STUDENT POSTS (Authentic Peer Reflections)
+    let studentPosts = [];
     try {
-      const { data: dbCards } = await supabase
-        .from('experience_cards')
-        .select('*');
-      if (dbCards && dbCards.length > 0) {
-        rawCards = dbCards;
+      const postsResult = await EmbeddingService.searchSemanticPosts({
+        queryText: content,
+        queryVector,
+        category,
+        tags,
+        excludePostId,
+        topK: 3,
+        minThreshold: 0.25,
+        userClient
+      });
+
+      if (postsResult && Array.isArray(postsResult.matches)) {
+        studentPosts = postsResult.matches;
       }
-    } catch (e) {}
-
-    if (rawCards.length === 0) {
-      rawCards = DEMO_EXPERIENCES.map((c, idx) => ({ ...c, id: `seed-exp-${idx + 1}` }));
+    } catch (err) {
+      console.warn('Student posts match error:', err.message);
     }
-
-    const queryTokens = tokenize(content);
-    if (tags && Array.isArray(tags)) {
-      tags.forEach(t => queryTokens.push(...tokenize(t)));
-    }
-    const queryFreq = {};
-    queryTokens.forEach(t => { queryFreq[t] = (queryFreq[t] || 0) + 1; });
-
-    const reqCategory = normalizeCategory(category);
-
-    const scoredCards = rawCards.map(card => {
-      const cardText = `${card.title || ''} ${card.excerpt || ''} ${card.what_happened || card.whatHappened || ''} ${card.what_helped || card.whatHelped || ''} ${Array.isArray(card.tags) ? card.tags.join(' ') : ''}`;
-      const cardTokens = tokenize(cardText);
-      const cardFreq = {};
-      cardTokens.forEach(t => { cardFreq[t] = (cardFreq[t] || 0) + 1; });
-
-      let similarityScore = computeCosineSimilarity(queryFreq, cardFreq);
-      const cardCat = normalizeCategory(card.category);
-      if (cardCat === reqCategory) similarityScore += 0.25;
-      if (Array.isArray(card.tags) && Array.isArray(tags)) {
-        const overlap = card.tags.filter(t => tags.includes(t)).length;
-        similarityScore += overlap * 0.1;
-      }
-
-      return { card, similarityScore };
-    });
-
-    scoredCards.sort((a, b) => b.similarityScore - a.similarityScore);
-
-    const matches = scoredCards.slice(0, topK).map(({ card, similarityScore }) => {
-      const relevanceLabel = similarityScore > 0.4 ? 'Highly relevant' : 'Similar experience';
-      return {
-        id: card.id,
-        title: card.title || card.excerpt?.substring(0, 50) || 'Student Experience',
-        category: card.category || 'General',
-        excerpt: card.excerpt || card.what_happened || card.whatHappened || '',
-        whatHappened: card.what_happened || card.whatHappened || '',
-        whatChanged: card.what_changed || card.whatChanged || '',
-        whatHelped: card.what_helped || card.whatHelped || [],
-        whereIAmNow: card.where_i_am_now || card.whereIAmNow || '',
-        tags: card.tags || [],
-        relevanceLabel,
-        readTime: card.readTime || '3 min read'
-      };
-    });
 
     return {
-      matches,
-      matchType: 'category_tag_fallback'
+      canonicalExperience,
+      studentPosts,
+      hasCanonicalMatch: !!canonicalExperience,
+      hasStudentMatch: studentPosts.length > 0,
+      matches: canonicalExperience ? [canonicalExperience] : [],
+      matchType: 'unified_semantic_match'
     };
   }
 

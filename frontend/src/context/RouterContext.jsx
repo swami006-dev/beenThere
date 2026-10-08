@@ -53,6 +53,12 @@ export function RouterProvider({ children }) {
       return { route: 'experience-detail', params: { id: expMatch[1] } };
     }
 
+    // /post/:id
+    const postMatch = path.match(/^\/post\/([^/?#]+)/);
+    if (postMatch) {
+      return { route: 'post-detail', params: { id: postMatch[1] } };
+    }
+
     // /moderator/review/:id or /moderation/review/:id
     const modReviewMatch = path.match(/^\/(?:moderator|moderation)\/review\/([^/?#]+)/);
     if (modReviewMatch) {

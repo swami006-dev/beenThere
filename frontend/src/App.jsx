@@ -11,6 +11,7 @@ import { HomePage } from './pages/HomePage';
 import { SharePage } from './pages/SharePage';
 import { MatchingPage } from './pages/MatchingPage';
 import { ExperienceDetailPage } from './pages/ExperienceDetailPage';
+import { PostDetailPage } from './pages/PostDetailPage';
 import { ExplorePage } from './pages/ExplorePage';
 import { SavedPage } from './pages/SavedPage';
 import { CommunityPage } from './pages/CommunityPage';
@@ -45,6 +46,8 @@ function RouteRenderer() {
       return <MatchingPage />;
     case 'experience-detail':
       return <ExperienceDetailPage />;
+    case 'post-detail':
+      return <PostDetailPage />;
     case 'explore':
       return <ExplorePage />;
     case 'saved':
