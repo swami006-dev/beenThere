@@ -334,12 +334,3 @@ And if nobody has—
 
 ---
 
-## Team
-
-**Team:** [TEAM NAME]
-
-**Members:**
-- [Member 1]
-- [Member 2]
-- [Member 3]
-- [Member 4]
