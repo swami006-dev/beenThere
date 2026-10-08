@@ -19,7 +19,7 @@ export function SavedPage() {
     api.get('/saved')
       .then(res => {
         if (!isMounted) return;
-        const list = Array.isArray(res) ? res : [];
+        const list = Array.isArray(res) ? res : (Array.isArray(res?.items) ? res.items : []);
         setSavedItems(list);
         setLoading(false);
       })

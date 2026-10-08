@@ -59,6 +59,9 @@ export function mapPostToUI(post) {
   const avatar = avatarKey === 'moon' ? '🌙' : avatarKey === 'star' ? '⭐' : avatarKey === 'panda' ? '🐼' : '🦉';
   const timeAgo = post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Recently';
 
+  const responseCount = typeof post.responseCount === 'number' ? post.responseCount : 0;
+  const anonymousProfileId = post.anonymousProfileId || post.anonymous_profile_id || null;
+
   return {
     id,
     content,
@@ -72,7 +75,9 @@ export function mapPostToUI(post) {
     anonymousDisplayName: author,
     avatarKey,
     anonymousAvatar: avatar,
-    context: 'College student',
+    anonymousProfileId,
+    responseCount,
+    context: 'Student',
     status: post.status || 'approved',
     similarity: post.similarity,
     relevanceLabel: post.relevanceLabel,

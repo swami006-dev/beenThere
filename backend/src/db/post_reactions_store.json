@@ -12,5 +12,47 @@
     "user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
     "reaction_type": "helpful",
     "created_at": "2026-10-08T08:51:08.175Z"
+  },
+  {
+    "id": "0d1d3344-8915-4eb1-88fe-036cf7c4213c",
+    "post_id": "82afd824-ea1e-44ff-bcb4-e0d7fd16aed5",
+    "user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T09:37:52.717Z"
+  },
+  {
+    "id": "504746ad-d232-4447-a81b-89a1390b0e07",
+    "post_id": "82afd824-ea1e-44ff-bcb4-e0d7fd16aed5",
+    "user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T09:37:53.385Z"
+  },
+  {
+    "id": "ae50aa6b-928b-4234-898b-41c54e87111a",
+    "post_id": "2c767c8d-c1a1-44a3-91b7-954ebd45a792",
+    "user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T09:40:03.335Z"
+  },
+  {
+    "id": "70d509c8-b585-4a9a-8cd9-3730dcf0c6ad",
+    "post_id": "2c767c8d-c1a1-44a3-91b7-954ebd45a792",
+    "user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T09:40:03.958Z"
+  },
+  {
+    "id": "ab58c7ea-15ac-4221-9a7c-394059f74d69",
+    "post_id": "fb1adb9b-bd2f-45a2-b9c3-de63e09f0f2e",
+    "user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T09:41:35.934Z"
+  },
+  {
+    "id": "a56a6cf1-87f4-4df2-9dbd-e1ea715b4526",
+    "post_id": "fb1adb9b-bd2f-45a2-b9c3-de63e09f0f2e",
+    "user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+    "reaction_type": "helpful",
+    "created_at": "2026-10-08T09:41:36.551Z"
   }
 ]

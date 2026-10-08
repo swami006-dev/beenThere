@@ -2,6 +2,7 @@ const { z } = require('zod');
 
 const createRequestSchema = z.object({
   experiencePostId: z.string({ required_error: 'Experience post ID is required' }).min(1, 'Experience post ID is required'),
+  targetAnonymousProfileId: z.string().optional().nullable(),
   message: z.string().transform(v => (v ? v.trim().replace(/\s+/g, ' ') : '')).optional()
 });
 

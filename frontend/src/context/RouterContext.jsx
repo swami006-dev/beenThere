@@ -41,6 +41,12 @@ export function RouterProvider({ children }) {
     if (path === '/saved') return { route: 'saved', params: {} };
     if (path === '/my-experiences' || path === '/my-posts') return { route: 'my-experiences', params: {} };
     if (path === '/community') return { route: 'community', params: {} };
+    // /profile/anonymous/:id
+    const anonProfileMatch = path.match(/^\/profile\/anonymous\/([^/?#]+)/);
+    if (anonProfileMatch) {
+      return { route: 'anonymous-profile', params: { id: anonProfileMatch[1] } };
+    }
+
     if (path === '/profile') return { route: 'profile', params: {} };
     if (path === '/conversations' || path === '/messages') return { route: 'conversations', params: {} };
     const convMatch = path.match(/^\/conversations\/([^/?#]+)/);

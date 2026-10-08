@@ -1,16 +1,49 @@
+const fs = require('fs');
+const path = require('path');
+const { randomUUID } = require('crypto');
 const { supabase } = require('../db/supabase');
 const AuthService = require('./auth.service');
+const ProfilesStore = require('./profiles.store');
 const { NotFoundError, ForbiddenError, AppError } = require('../utils/errors');
+
+const STORE_PATH = path.join(__dirname, '../db/responses_store.json');
+
+function loadResponsesStore() {
+  try {
+    if (fs.existsSync(STORE_PATH)) {
+      const data = fs.readFileSync(STORE_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.warn('Failed to load responses store from file:', e.message);
+  }
+  return [];
+}
+
+function saveResponsesStore(items) {
+  try {
+    const dir = path.dirname(STORE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(STORE_PATH, JSON.stringify(items, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('Failed to write responses store to file:', e.message);
+  }
+}
 
 function formatResponseDTO(resp, anonymousProfile = {}) {
   const joinProfile = resp.anonymous_profiles || resp.anonymous_profile;
+  const anonProfId = resp.anonymous_profile_id || resp.anonymousProfileId || anonymousProfile?.id;
+  const storeProfile = anonProfId ? ProfilesStore.getProfile(anonProfId) : null;
+
   const nameFromJoin = joinProfile?.display_name || joinProfile?.anonymous_display_name || joinProfile?.anonymous_name || joinProfile?.anonymousDisplayName;
   const nameFromAnon = anonymousProfile?.anonymousDisplayName || anonymousProfile?.display_name || anonymousProfile?.anonymous_display_name || anonymousProfile?.anonymous_name;
-  const finalName = nameFromJoin || nameFromAnon || 'Anonymous Student';
+  const nameFromStore = storeProfile?.displayName;
+  const finalName = nameFromJoin || nameFromAnon || nameFromStore || 'Anonymous Student';
 
   const avatarFromJoin = joinProfile?.avatar_key || joinProfile?.avatarKey;
   const avatarFromAnon = anonymousProfile?.avatarKey || anonymousProfile?.avatar_key;
-  const finalAvatar = avatarFromJoin || avatarFromAnon || 'owl';
+  const avatarFromStore = storeProfile?.avatarKey;
+  const finalAvatar = avatarFromJoin || avatarFromAnon || avatarFromStore || 'owl';
 
   return {
     id: resp.id,
@@ -18,7 +51,8 @@ function formatResponseDTO(resp, anonymousProfile = {}) {
     content: resp.content || '',
     createdAt: resp.created_at || resp.createdAt || new Date().toISOString(),
     anonymousDisplayName: finalName,
-    avatarKey: finalAvatar
+    avatarKey: finalAvatar,
+    anonymousProfileId: anonProfId || null
   };
 }
 
@@ -35,13 +69,24 @@ class ResponsesService {
         query = query.eq('post_id', postId);
       }
 
-      const { data: responses } = await query;
-      if (Array.isArray(responses)) {
+      const { data: responses, error } = await query;
+      if (!error && Array.isArray(responses)) {
         list = responses.map((r) => formatResponseDTO(r));
       }
     } catch (e) {
       console.warn('DB listResponses warning:', e.message);
     }
+
+    // Merge in responses from persistent disk store if not already present
+    try {
+      const diskResponses = loadResponsesStore();
+      const filteredDisk = postId ? diskResponses.filter(r => (r.post_id || r.postId) === postId) : diskResponses;
+      filteredDisk.forEach(r => {
+        if (!list.some(existing => existing.id === r.id)) {
+          list.push(formatResponseDTO(r));
+        }
+      });
+    } catch (dErr) {}
 
     if (postId && ResponsesService.responsesMemoryCache && ResponsesService.responsesMemoryCache.has(postId)) {
       const cached = ResponsesService.responsesMemoryCache.get(postId);
@@ -63,12 +108,15 @@ class ResponsesService {
       console.warn('Could not getOrCreateAnonymousProfile in createResponse:', e.message);
     }
 
+    const responseId = randomUUID();
     const responseData = {
-      id: `resp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: responseId,
       post_id: postId,
       anonymous_profile_id: anonProfile?.id || null,
       content,
-      created_at: new Date().toISOString()
+      status: 'approved',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
     if (!ResponsesService.responsesMemoryCache) {
@@ -78,6 +126,13 @@ class ResponsesService {
       ResponsesService.responsesMemoryCache.set(postId, []);
     }
     ResponsesService.responsesMemoryCache.get(postId).push(responseData);
+
+    // Save to disk store as fallback
+    try {
+      const diskResponses = loadResponsesStore();
+      diskResponses.push(responseData);
+      saveResponsesStore(diskResponses);
+    } catch (sErr) {}
 
     let created = null;
     try {

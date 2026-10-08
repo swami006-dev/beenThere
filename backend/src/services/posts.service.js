@@ -5,13 +5,22 @@ const { NotFoundError, ForbiddenError, AppError } = require('../utils/errors');
 
 function formatPostDTO(post, anonymousProfile = {}) {
   const joinProfile = post.anonymous_profiles || post.anonymous_profile;
+  const anonProfId = post.anonymous_profile_id || post.anonymousProfileId || anonymousProfile?.id;
+  const storeProfile = anonProfId ? ProfilesStore.getProfile(anonProfId) : null;
+
   const nameFromJoin = joinProfile?.display_name || joinProfile?.anonymous_display_name || joinProfile?.anonymous_name || joinProfile?.anonymousDisplayName;
   const nameFromAnon = anonymousProfile?.display_name || anonymousProfile?.anonymous_display_name || anonymousProfile?.anonymous_name || anonymousProfile?.anonymousDisplayName;
-  const finalName = nameFromJoin || nameFromAnon || 'Anonymous Student';
+  const nameFromStore = storeProfile?.displayName;
+  const finalName = nameFromJoin || nameFromAnon || nameFromStore || 'Anonymous Student';
 
   const avatarFromJoin = joinProfile?.avatar_key || joinProfile?.avatarKey;
   const avatarFromAnon = anonymousProfile?.avatar_key || anonymousProfile?.avatarKey;
-  const finalAvatar = avatarFromJoin || avatarFromAnon || 'owl';
+  const avatarFromStore = storeProfile?.avatarKey;
+  const finalAvatar = avatarFromJoin || avatarFromAnon || avatarFromStore || 'owl';
+
+  const responseCount = Array.isArray(post.responses) && post.responses[0]?.count !== undefined
+    ? post.responses[0].count
+    : (typeof post.responseCount === 'number' ? post.responseCount : 0);
 
   return {
     id: post.id,
@@ -21,7 +30,9 @@ function formatPostDTO(post, anonymousProfile = {}) {
     tags: post.tags || [],
     createdAt: post.created_at || post.createdAt || new Date().toISOString(),
     anonymousDisplayName: finalName,
-    avatarKey: finalAvatar
+    avatarKey: finalAvatar,
+    anonymousProfileId: anonProfId || null,
+    responseCount
   };
 }
 
@@ -29,14 +40,14 @@ class PostsService {
   static async listApprovedPosts(userClient = supabase) {
     const { data: posts, error } = await userClient
       .from('posts')
-      .select('*, anonymous_profiles(display_name, avatar_key)')
+      .select('*, anonymous_profiles(display_name, avatar_key), responses(count)')
       .eq('status', 'approved')
       .order('created_at', { ascending: false });
 
     if (error) {
       const { data: fallback, error: err2 } = await userClient
         .from('posts')
-        .select('*')
+        .select('*, responses(count)')
         .order('created_at', { ascending: false });
 
       if (err2 || !fallback) return [];

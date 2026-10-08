@@ -18,6 +18,7 @@ import { CommunityPage } from './pages/CommunityPage';
 import { MyPostsPage } from './pages/MyPostsPage';
 import { ConversationsPage } from './pages/ConversationsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { AnonymousProfilePage } from './pages/AnonymousProfilePage';
 import { ModeratorPage } from './pages/ModeratorPage';
 import { ModeratorReviewPage } from './pages/ModeratorReviewPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -61,6 +62,8 @@ function RouteRenderer() {
       return <ConversationsPage />;
     case 'profile':
       return <ProfilePage />;
+    case 'anonymous-profile':
+      return <AnonymousProfilePage />;
     case 'moderator':
       return <ModeratorPage />;
     case 'moderator-review':

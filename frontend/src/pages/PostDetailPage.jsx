@@ -20,6 +20,7 @@ export function PostDetailPage() {
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
   const [justSubmittedId, setJustSubmittedId] = useState(null);
   const [showConvModal, setShowConvModal] = useState(false);
+  const [chatTarget, setChatTarget] = useState(null);
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [reportError, setReportError] = useState('');
@@ -439,7 +440,12 @@ export function PostDetailPage() {
                 </div>
               ) : (
                 responses.map((r, idx) => {
-                  const isUserResponse = currentUser && (r.anonymousDisplayName === currentUser.anonymousIdentity || r.id === justSubmittedId);
+                  const isUserResponse = currentUser && (
+                    (currentUser.anonymousProfileId && r.anonymousProfileId === currentUser.anonymousProfileId) ||
+                    r.anonymousDisplayName === currentUser.anonymousIdentity ||
+                    r.id === justSubmittedId
+                  );
+                  const avatar = r.avatarKey === 'moon' ? '🌙' : r.avatarKey === 'star' ? '⭐' : r.avatarKey === 'panda' ? '🐼' : r.avatarKey === 'fox' ? '🦊' : r.avatarKey === 'leaf' ? '🍃' : r.avatarKey === 'bear' ? '🐻' : r.avatarKey === 'wolf' ? '🐺' : '🦉';
 
                   return (
                     <div 
@@ -452,23 +458,75 @@ export function PostDetailPage() {
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <div style={{ fontSize: '0.82rem', color: isUserResponse ? 'var(--accent-mint)' : 'var(--text-secondary)', fontWeight: 500 }}>
-                          {isUserResponse ? `YOU · ${currentUser?.anonymousIdentity || 'Anonymous Student'}` : (r.anonymousDisplayName || 'Anonymous Peer')}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '1.05rem' }}>{avatar}</span>
+                          <span style={{ fontSize: '0.85rem', color: isUserResponse ? 'var(--accent-mint)' : 'var(--text-primary)', fontWeight: 500 }}>
+                            {isUserResponse ? `YOU · ${currentUser?.anonymousIdentity || 'Anonymous Student'} · Student` : `${r.anonymousDisplayName || 'Anonymous Student'} · Student`}
+                          </span>
                         </div>
                         <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)' }}>
                           {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'Recently'}
                         </div>
                       </div>
 
-                      <p style={{ margin: 0, fontSize: '0.94rem', lineHeight: '1.6', color: 'var(--text-primary)' }}>
+                      <p style={{ margin: '6px 0 12px', fontSize: '0.94rem', lineHeight: '1.6', color: 'var(--text-primary)' }}>
                         {r.content}
                       </p>
 
-                      {isUserResponse && (
-                        <div style={{ marginTop: '8px', fontSize: '0.74rem', color: 'var(--accent-mint)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <span>✓ Shared anonymously</span>
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
+                        {r.anonymousProfileId && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/profile/anonymous/${r.anonymousProfileId}`, { from: `/post/${id}` })}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--accent-mint)',
+                              fontSize: '0.82rem',
+                              cursor: 'pointer',
+                              padding: 0,
+                              fontWeight: 500
+                            }}
+                          >
+                            View profile
+                          </button>
+                        )}
+
+                        {!isUserResponse && r.anonymousProfileId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isAuthenticated) {
+                                navigate(`/login?redirect=/post/${id}`);
+                              } else {
+                                setChatTarget({
+                                  ...post,
+                                  targetAnonymousProfileId: r.anonymousProfileId,
+                                  recipientName: r.anonymousDisplayName || 'Anonymous Student'
+                                });
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: '1px solid var(--accent-mint-border)',
+                              borderRadius: '4px',
+                              color: 'var(--accent-mint)',
+                              fontSize: '0.8rem',
+                              cursor: 'pointer',
+                              padding: '2px 8px',
+                              fontWeight: 500
+                            }}
+                          >
+                            Talk privately →
+                          </button>
+                        )}
+
+                        {isUserResponse && (
+                          <div style={{ fontSize: '0.74rem', color: 'var(--accent-mint)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span>✓ Shared anonymously</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })
@@ -546,11 +604,14 @@ export function PostDetailPage() {
       </main>
 
       {/* 1-to-1 REQUEST MODAL */}
-      {showConvModal && (
+      {(showConvModal || chatTarget) && (
         <RequestConversationModal
-          isOpen={showConvModal}
-          onClose={() => setShowConvModal(false)}
-          experience={post}
+          isOpen={showConvModal || !!chatTarget}
+          onClose={() => {
+            setShowConvModal(false);
+            setChatTarget(null);
+          }}
+          experience={chatTarget || post}
         />
       )}
 

@@ -36,12 +36,18 @@ export function MatchingPage() {
   const topic = resolvedTopic || routeState?.topic || 'Academic';
   const aiAnalysis = resolvedAi || routeState?.aiAnalysis;
 
-  const [canonicalExperience, setCanonicalExperience] = useState(null);
-  const [studentPosts, setStudentPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [canonicalExperience, setCanonicalExperience] = useState(routeState?.canonicalExperience || null);
+  const [studentPosts, setStudentPosts] = useState(routeState?.studentPosts || []);
+  const [loading, setLoading] = useState(routeState?.canonicalExperience === undefined && routeState?.studentPosts === undefined);
   const [selectedPostForChat, setSelectedPostForChat] = useState(null);
 
   useEffect(() => {
+    // If returning from another page with preserved matching results, don't re-run match
+    if (routeState?.canonicalExperience !== undefined || routeState?.studentPosts !== undefined) {
+      setLoading(false);
+      return;
+    }
+
     let isMounted = true;
     setLoading(true);
 
@@ -80,7 +86,7 @@ export function MatchingPage() {
     return () => {
       isMounted = false;
     };
-  }, [createdPostId, userInput, topic]);
+  }, [createdPostId, userInput, topic, routeState]);
 
   const hasAnyMatch = canonicalExperience || studentPosts.length > 0;
 
@@ -264,7 +270,9 @@ export function MatchingPage() {
                             userInput,
                             topic,
                             aiAnalysis,
-                            postId: createdPostId
+                            postId: createdPostId,
+                            canonicalExperience,
+                            studentPosts
                           }
                         })}
                       >
@@ -275,21 +283,157 @@ export function MatchingPage() {
                 </section>
               )}
 
-              {/* 3. STUDENTS WHO'VE BEEN HERE (REAL PEER REFLECTIONS) */}
-              <section className="peer-reflections-section" style={{ marginBottom: '36px' }}>
-                <header style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '1.15rem' }}>🤝</span>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      STUDENTS WHO'VE BEEN HERE
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', margin: 0 }}>
-                    Real reflections from students facing similar challenges. You can read their reflections or connect privately.
-                  </p>
-                </header>
+              {/* 3. CASE A OR REGULAR PEER REFLECTIONS */}
+              {canonicalExperience ? (
+                <section className="peer-reflections-section" style={{ marginBottom: '36px' }}>
+                  <header style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '1.15rem' }}>🤝</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        STUDENTS WHO'VE BEEN HERE
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', margin: 0 }}>
+                      Real reflections from students facing similar challenges. You can read their reflections or connect privately.
+                    </p>
+                  </header>
 
-                {studentPosts.length > 0 ? (
+                  {studentPosts.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                      {studentPosts.map((post, idx) => (
+                        <article 
+                          key={post.id || idx}
+                          style={{
+                            backgroundColor: 'var(--surface-primary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            padding: '20px 24px',
+                            transition: 'border-color 0.2s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '1rem' }}>{post.anonymousAvatar || '🦉'}</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+                                {post.author}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                                · {post.timeAgo}
+                              </span>
+                            </div>
+
+                            <span style={{
+                              fontSize: '0.74rem',
+                              color: 'var(--accent-mint)',
+                              backgroundColor: 'rgba(123, 224, 179, 0.08)',
+                              padding: '2px 8px',
+                              borderRadius: '4px'
+                            }}>
+                              {post.relevanceLabel || 'Similar reflection'}
+                            </span>
+                          </div>
+
+                          <blockquote style={{
+                            margin: '12px 0 16px',
+                            paddingLeft: '14px',
+                            borderLeft: '2px solid var(--accent-mint-border)',
+                            fontStyle: 'italic',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.96rem',
+                            lineHeight: '1.55'
+                          }}>
+                            “{post.content}”
+                          </blockquote>
+
+                          <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
+                            <button
+                              type="button"
+                              style={{
+                                backgroundColor: 'transparent',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                                padding: '7px 14px',
+                                borderRadius: '4px',
+                                fontSize: '0.84rem',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => navigate(`/post/${post.id}`, {
+                                from: '/matching',
+                                matchingState: {
+                                  userInput,
+                                  topic,
+                                  aiAnalysis,
+                                  postId: createdPostId,
+                                  canonicalExperience,
+                                  studentPosts
+                                }
+                              })}
+                            >
+                              <span>Read reflection →</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              style={{
+                                backgroundColor: 'var(--surface-elevated)',
+                                border: '1px solid var(--accent-mint-border)',
+                                color: 'var(--accent-mint)',
+                                padding: '7px 14px',
+                                borderRadius: '4px',
+                                fontSize: '0.84rem',
+                                cursor: 'pointer',
+                                fontWeight: 500
+                              }}
+                              onClick={() => handleTalkPrivately(post)}
+                            >
+                              <span>Talk privately →</span>
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    /* CASE A: Canonical matches, but no student posts. Only ONE empty state. */
+                    <div style={{
+                      backgroundColor: 'var(--surface-primary)',
+                      border: '1px dashed var(--border)',
+                      borderRadius: '8px',
+                      padding: '32px 20px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '2.2rem', marginBottom: '10px' }}>🌱</div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                        No students have shared a similar experience yet.
+                      </h3>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: '460px', margin: '0 auto 20px', lineHeight: '1.5' }}>
+                        Your experience could be the first. Sharing it may help someone else who goes through something similar.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-auth-primary"
+                        style={{ width: 'auto', padding: '10px 22px', margin: '0 auto', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        onClick={() => navigate('/share')}
+                      >
+                        <span>Share your experience →</span>
+                      </button>
+                    </div>
+                  )}
+                </section>
+              ) : studentPosts.length > 0 ? (
+                /* Student posts match without canonical guidance */
+                <section className="peer-reflections-section" style={{ marginBottom: '36px' }}>
+                  <header style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '1.15rem' }}>🤝</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        STUDENTS WHO'VE BEEN HERE
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', margin: 0 }}>
+                      Real reflections from students facing similar challenges. You can read their reflections or connect privately.
+                    </p>
+                  </header>
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                     {studentPosts.map((post, idx) => (
                       <article 
@@ -354,7 +498,9 @@ export function MatchingPage() {
                                 userInput,
                                 topic,
                                 aiAnalysis,
-                                postId: createdPostId
+                                postId: createdPostId,
+                                canonicalExperience,
+                                studentPosts
                               }
                             })}
                           >
@@ -381,41 +527,14 @@ export function MatchingPage() {
                       </article>
                     ))}
                   </div>
-                ) : (
-                  /* EMPTY STATE FOR STUDENT POSTS */
-                  <div style={{
-                    backgroundColor: 'var(--surface-primary)',
-                    border: '1px dashed var(--border)',
-                    borderRadius: '8px',
-                    padding: '28px 20px',
-                    textAlign: 'center'
-                  }}>
-                    <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🌱</div>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                      No students have shared something closely related yet.
-                    </h3>
-                    <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto 18px', lineHeight: '1.5' }}>
-                      Your experience could be the first to open this door for someone else.
-                    </p>
-                    <button
-                      type="button"
-                      className="btn-auth-primary"
-                      style={{ width: 'auto', padding: '10px 20px', margin: '0 auto', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                      onClick={handleStartConversation}
-                    >
-                      <span>Start your own conversation →</span>
-                    </button>
-                  </div>
-                )}
-              </section>
-
-              {/* 4. IF NEITHER MATCHES FLOW */}
-              {!hasAnyMatch && (
+                </section>
+              ) : (
+                /* CASE B: Neither matches. Show ONLY ONE global empty state. */
                 <div style={{
                   backgroundColor: 'var(--surface-primary)',
                   border: '1px dashed var(--accent-mint-border)',
                   borderRadius: '8px',
-                  padding: '36px 24px',
+                  padding: '40px 24px',
                   textAlign: 'center',
                   marginTop: '20px'
                 }}>
@@ -424,15 +543,15 @@ export function MatchingPage() {
                     No closely related experience yet.
                   </h2>
                   <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 20px', lineHeight: '1.5' }}>
-                    Your experience could be the first. Starting this conversation helps other students find solidarity when they face this too.
+                    Your experience could be the first.
                   </p>
                   <button
                     type="button"
                     className="btn-auth-primary"
                     style={{ padding: '12px 24px', width: 'auto', margin: '0 auto', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                    onClick={handleStartConversation}
+                    onClick={() => navigate('/share')}
                   >
-                    <span>Start your own conversation →</span>
+                    <span>Share your experience →</span>
                   </button>
                 </div>
               )}

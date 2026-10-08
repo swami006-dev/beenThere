@@ -48,6 +48,18 @@ class AuthController {
       next(err);
     }
   }
+
+  static async getAnonymousProfile(req, res, next) {
+    try {
+      const { profileId } = req.params;
+      const { createUserClient } = require('../db/supabase');
+      const userClient = req.token ? createUserClient(req.token) : undefined;
+      const result = await AuthService.getPublicAnonymousProfile(profileId, userClient);
+      return successResponse(res, result, 200);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = AuthController;

@@ -19,6 +19,7 @@ export function RequestConversationModal({ isOpen, onClose, experience }) {
     try {
       await api.post('/conversations/requests', {
         experiencePostId: experience.id,
+        targetAnonymousProfileId: experience.targetAnonymousProfileId || undefined,
         message: message.trim()
       });
 
@@ -89,7 +90,9 @@ export function RequestConversationModal({ isOpen, onClose, experience }) {
               Start an anonymous conversation?
             </h2>
             <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary, #94a3b8)', lineHeight: '1.5', marginBottom: '18px' }}>
-              You're requesting to talk with someone who shared this experience.
+              {experience.recipientName 
+                ? `You're requesting to talk anonymously with ${experience.recipientName}.`
+                : "You're requesting to talk with someone who shared this experience."}
             </p>
 
             {error && (

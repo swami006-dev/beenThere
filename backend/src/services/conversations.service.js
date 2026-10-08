@@ -150,14 +150,51 @@ class ConversationsService {
     }
   }
 
-  static async createRequest(userClient, user, { experiencePostId, message }) {
+  static async createRequest(userClient, user, { experiencePostId, targetAnonymousProfileId, message }) {
     if (!user || !user.id) {
       throw new ForbiddenError('Authentication required to create a request');
     }
 
-    const { authorUserId, authorAnonymousProfileId, title, category, isCanonical } = await this.resolveExperienceDetails(userClient, experiencePostId);
+    let authorUserId = null;
+    let authorAnonymousProfileId = null;
+    let title = 'Student Reflection';
+    let category = 'General';
+    let isCanonical = false;
 
-    if (isCanonical) {
+    if (targetAnonymousProfileId) {
+      authorAnonymousProfileId = targetAnonymousProfileId;
+      const prof = ProfilesStore.getProfile(targetAnonymousProfileId);
+      if (prof?.userId) {
+        authorUserId = prof.userId;
+      } else {
+        try {
+          const { data: dbProf } = await (userClient || supabase)
+            .from('anonymous_profiles')
+            .select('id, user_id')
+            .eq('id', targetAnonymousProfileId)
+            .maybeSingle();
+          if (dbProf?.user_id) authorUserId = dbProf.user_id;
+        } catch (e) {
+          console.warn('targetAnonymousProfileId DB resolve notice:', e.message);
+        }
+      }
+
+      // Also grab context from experiencePostId if possible
+      try {
+        const expDetails = await this.resolveExperienceDetails(userClient, experiencePostId);
+        title = expDetails.title || 'Student Discussion Response';
+        category = expDetails.category || 'General';
+      } catch (e) {}
+    } else {
+      const details = await this.resolveExperienceDetails(userClient, experiencePostId);
+      authorUserId = details.authorUserId;
+      authorAnonymousProfileId = details.authorAnonymousProfileId;
+      title = details.title;
+      category = details.category;
+      isCanonical = details.isCanonical;
+    }
+
+    if (isCanonical && !targetAnonymousProfileId) {
       throw new BadRequestError('This experience was shared canonically and does not currently have a direct student author available for 1-to-1 chat.');
     }
 

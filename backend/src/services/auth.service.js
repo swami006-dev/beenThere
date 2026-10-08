@@ -260,6 +260,121 @@ class AuthService {
   static async getOrCreateAnonymousProfile(userClient, userId, chosenIdentity, academicContext) {
     return getOrCreateAnonymousProfile(userClient, userId, chosenIdentity, academicContext);
   }
+
+  static async getPublicAnonymousProfile(profileId, userClient = null) {
+    if (!profileId) {
+      const { BadRequestError } = require('../utils/errors');
+      throw new BadRequestError('profileId is required');
+    }
+
+    const { NotFoundError } = require('../utils/errors');
+    let displayName = 'Anonymous Student';
+    let avatarKey = 'owl';
+    let found = false;
+
+    // 1. Check ProfilesStore cache
+    const storeProfile = ProfilesStore.getProfile(profileId);
+    if (storeProfile) {
+      displayName = storeProfile.displayName || displayName;
+      avatarKey = storeProfile.avatarKey || avatarKey;
+      found = true;
+    }
+
+    // 2. Check Supabase anonymous_profiles
+    try {
+      const client = userClient || supabase;
+      const { data: dbProf } = await client
+        .from('anonymous_profiles')
+        .select('id, display_name, avatar_key')
+        .eq('id', profileId)
+        .maybeSingle();
+
+      if (dbProf) {
+        displayName = dbProf.display_name || displayName;
+        avatarKey = dbProf.avatar_key || avatarKey;
+        found = true;
+      }
+    } catch (e) {
+      console.warn('getPublicAnonymousProfile DB query notice:', e.message);
+    }
+
+    if (!found) {
+      throw new NotFoundError(`Anonymous profile with ID '${profileId}' not found`);
+    }
+
+    // 3. Fetch public reflections created by this anonymous student
+    let publicPosts = [];
+    try {
+      const client = userClient || supabase;
+      const { data: posts } = await client
+        .from('posts')
+        .select('id, content, category, tags, created_at, status')
+        .eq('anonymous_profile_id', profileId)
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false });
+
+      if (Array.isArray(posts)) {
+        publicPosts = posts.map(p => ({
+          id: p.id,
+          content: p.content,
+          title: p.content ? (p.content.substring(0, 60) + (p.content.length > 60 ? '...' : '')) : 'Student Reflection',
+          category: p.category || 'General',
+          tags: Array.isArray(p.tags) ? p.tags : [],
+          createdAt: p.created_at
+        }));
+      }
+    } catch (e) {
+      console.warn('getPublicAnonymousProfile posts notice:', e.message);
+    }
+
+    // 4. Count community responses by this anonymous profile
+    let responsesCount = 0;
+    try {
+      const client = userClient || supabase;
+      const { count } = await client
+        .from('responses')
+        .select('*', { count: 'exact', head: true })
+        .eq('anonymous_profile_id', profileId);
+
+      if (typeof count === 'number') {
+        responsesCount = count;
+      }
+    } catch (e) {
+      console.warn('getPublicAnonymousProfile responses count notice:', e.message);
+    }
+
+    // Also check responses disk store if needed
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const storePath = path.join(__dirname, '../db/responses_store.json');
+      if (fs.existsSync(storePath)) {
+        const diskResponses = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+        const diskCount = diskResponses.filter(r => (r.anonymous_profile_id || r.anonymousProfileId) === profileId).length;
+        responsesCount = Math.max(responsesCount, diskCount);
+      }
+    } catch (e) {}
+
+    // 5. Build broad public topics list
+    const topicsSet = new Set();
+    publicPosts.forEach(p => {
+      if (p.category) topicsSet.add(p.category);
+      if (Array.isArray(p.tags)) p.tags.forEach(t => topicsSet.add(t));
+    });
+    const topics = Array.from(topicsSet).slice(0, 6);
+
+    // SECURITY: strictly NO user_id, email, phone, or private auth information returned!
+    return {
+      id: profileId,
+      anonymousDisplayName: displayName,
+      avatarKey,
+      role: 'Student',
+      sharedReflectionsCount: publicPosts.length,
+      responsesCount,
+      topics,
+      publicPosts
+    };
+  }
 }
 
 module.exports = AuthService;
