@@ -8,12 +8,24 @@ import { api } from '../config/api';
 import { mapExperienceToUI } from '../utils/dataMappers';
 
 export function ExperienceDetailPage() {
-  const { match, navigate } = useRouter();
+  const { match, navigate, routeState } = useRouter();
   const { isExperienceSaved, toggleSaveExperience } = useAuth();
   const id = match.params.id;
 
   const [experience, setExperience] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const handleBack = () => {
+    if (routeState?.from === '/matching') {
+      navigate('/matching', routeState.matchingState || null);
+    } else if (routeState?.from) {
+      navigate(routeState.from);
+    } else if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/explore');
+    }
+  };
 
   // Fetch canonical experience card from backend
   useEffect(() => {
@@ -113,7 +125,7 @@ export function ExperienceDetailPage() {
             <button 
               type="button" 
               className="back-nav-btn"
-              onClick={() => navigate('/explore')}
+              onClick={handleBack}
             >
               ← Back to archive
             </button>
@@ -121,7 +133,11 @@ export function ExperienceDetailPage() {
               <span className="reader-read-time">{experience.readTime || '3 min read'}</span>
               <button
                 type="button"
-                onClick={() => toggleSaveExperience(experience.id)}
+                onClick={() => toggleSaveExperience(experience.id, 'experience', {
+                  title: experience.title,
+                  excerpt: experience.excerpt || experience.whatHappened,
+                  category: experience.categoryLabel || 'General'
+                })}
                 style={{
                   background: 'none',
                   border: '1px solid var(--border)',
@@ -132,7 +148,7 @@ export function ExperienceDetailPage() {
                   fontSize: '0.82rem'
                 }}
               >
-                {isSaved ? '★ Saved' : '☆ Save'}
+                {isSaved ? '★ Saved' : '☆ Save for later'}
               </button>
             </div>
           </div>

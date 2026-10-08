@@ -258,7 +258,15 @@ export function MatchingPage() {
                           alignItems: 'center',
                           gap: '6px'
                         }}
-                        onClick={() => navigate(`/experience/${canonicalExperience.id}`)}
+                        onClick={() => navigate(`/experience/${canonicalExperience.id}`, {
+                          from: '/matching',
+                          matchingState: {
+                            userInput,
+                            topic,
+                            aiAnalysis,
+                            postId: createdPostId
+                          }
+                        })}
                       >
                         <span>Read full guidance →</span>
                       </button>
@@ -340,7 +348,15 @@ export function MatchingPage() {
                               fontSize: '0.84rem',
                               cursor: 'pointer'
                             }}
-                            onClick={() => navigate(`/post/${post.id}`)}
+                            onClick={() => navigate(`/post/${post.id}`, {
+                              from: '/matching',
+                              matchingState: {
+                                userInput,
+                                topic,
+                                aiAnalysis,
+                                postId: createdPostId
+                              }
+                            })}
                           >
                             <span>Read reflection →</span>
                           </button>

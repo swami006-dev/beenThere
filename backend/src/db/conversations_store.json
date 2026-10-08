@@ -1,0 +1,49 @@
+{
+  "requests": {
+    "f3b1b77c-b9a7-42ee-a32a-87bda510a62e": {
+      "id": "f3b1b77c-b9a7-42ee-a32a-87bda510a62e",
+      "experience_post_id": "f62607d9-ec40-46a1-bfd8-8c1eaa9f23f3",
+      "requester_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+      "requester_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+      "recipient_user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+      "recipient_anonymous_profile_id": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
+      "message": "Hey, I saw your reflection about shopping regret. How did you deal with it?",
+      "status": "accepted",
+      "created_at": "2026-10-08T08:51:09.408Z",
+      "updated_at": "2026-10-08T08:51:10.863Z"
+    }
+  },
+  "conversations": {
+    "ac921ce5-9791-426a-86eb-6bc1a141e7b7": {
+      "id": "ac921ce5-9791-426a-86eb-6bc1a141e7b7",
+      "request_id": "f3b1b77c-b9a7-42ee-a32a-87bda510a62e",
+      "experience_post_id": "f62607d9-ec40-46a1-bfd8-8c1eaa9f23f3",
+      "participant1_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+      "participant1_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+      "participant2_user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+      "participant2_anonymous_profile_id": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
+      "status": "active",
+      "created_at": "2026-10-08T08:51:10.864Z"
+    }
+  },
+  "messages": {
+    "ac921ce5-9791-426a-86eb-6bc1a141e7b7": [
+      {
+        "id": "9c71cddf-00f5-4bed-97b0-f926f7d201c0",
+        "conversation_id": "ac921ce5-9791-426a-86eb-6bc1a141e7b7",
+        "sender_user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+        "sender_anonymous_profile_id": "a06fb53f-3da8-484f-8e77-92bca5bff3cf",
+        "content": "Hey, I saw your reflection about shopping regret. How did you deal with it?",
+        "created_at": "2026-10-08T08:51:09.408Z"
+      },
+      {
+        "id": "3f964b17-06da-4aa7-a75e-6fe49e4b053b",
+        "conversation_id": "ac921ce5-9791-426a-86eb-6bc1a141e7b7",
+        "sender_user_id": "8abf7d7f-8771-41ec-83c1-3a425f1c101b",
+        "sender_anonymous_profile_id": "fedd5232-dfd9-48be-99e0-1db0d17d1e31",
+        "content": "I started tracking every purchase in a small notebook.",
+        "created_at": "2026-10-08T08:51:12.992Z"
+      }
+    ]
+  }
+}

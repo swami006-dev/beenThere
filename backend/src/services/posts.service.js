@@ -1,5 +1,6 @@
 const { supabase } = require('../db/supabase');
 const AuthService = require('./auth.service');
+const ProfilesStore = require('./profiles.store');
 const { NotFoundError, ForbiddenError, AppError } = require('../utils/errors');
 
 function formatPostDTO(post, anonymousProfile = {}) {
@@ -197,6 +198,24 @@ class PostsService {
       PostsService.postsMemoryCache = new Map();
     }
     PostsService.postsMemoryCache.set(result.id, created || postData);
+
+    try {
+      ProfilesStore.linkPost(result.id, {
+        authorUserId: user.id,
+        authorAnonymousProfileId: anonProfile?.id || null,
+        title: content.substring(0, 60),
+        category: category || 'General'
+      });
+      if (anonProfile?.id) {
+        ProfilesStore.setProfile(anonProfile.id, {
+          userId: user.id,
+          displayName: anonProfile.anonymousDisplayName,
+          avatarKey: anonProfile.avatarKey
+        });
+      }
+    } catch (e) {
+      console.warn('ProfilesStore linking notice:', e.message);
+    }
 
     return result;
   }

@@ -98,9 +98,21 @@ export function AuthProvider({ children }) {
     console.log('[AUTH] AUTH_STORAGE_FOUND');
 
     api.get('/auth/me')
-      .then(res => {
+      .then(async (res) => {
         const formatted = formatUserDTO(res);
         console.log('[AUTH] AUTH_ME_SUCCESS', { identity: formatted.anonymousIdentity });
+        try {
+          const savedRes = await api.get('/saved');
+          if (Array.isArray(savedRes)) {
+            formatted.savedExperienceIds = savedRes.map(item => item.itemId || item.item_id || item.id);
+          } else if (Array.isArray(savedRes?.savedItemIds)) {
+            formatted.savedExperienceIds = savedRes.savedItemIds;
+          } else if (Array.isArray(savedRes?.items)) {
+            formatted.savedExperienceIds = savedRes.items.map(item => item.itemId || item.item_id || item.id);
+          }
+        } catch (sErr) {
+          console.warn('[AUTH] Saved items fetch notice:', sErr.message);
+        }
         setCurrentUser(formatted);
         setIsAuthenticated(true);
         localStorage.setItem('beenthere_user', JSON.stringify(formatted));
@@ -127,6 +139,16 @@ export function AuthProvider({ children }) {
       const formatted = formatUserDTO(res);
       if (res.token) {
         localStorage.setItem('beenthere_token', res.token);
+        try {
+          const savedRes = await api.get('/saved');
+          if (Array.isArray(savedRes)) {
+            formatted.savedExperienceIds = savedRes.map(item => item.itemId || item.item_id || item.id);
+          } else if (Array.isArray(savedRes?.savedItemIds)) {
+            formatted.savedExperienceIds = savedRes.savedItemIds;
+          } else if (Array.isArray(savedRes?.items)) {
+            formatted.savedExperienceIds = savedRes.items.map(item => item.itemId || item.item_id || item.id);
+          }
+        } catch (sErr) {}
         localStorage.setItem('beenthere_user', JSON.stringify(formatted));
       }
       setCurrentUser(formatted);
@@ -170,18 +192,40 @@ export function AuthProvider({ children }) {
     setCurrentUser(null);
   };
 
-  const toggleSaveExperience = (experienceId) => {
-    setCurrentUser(prev => {
-      if (!prev) return prev;
-      const isSaved = prev.savedExperienceIds.includes(experienceId);
-      const updatedSaved = isSaved
-        ? prev.savedExperienceIds.filter(id => id !== experienceId)
-        : [...prev.savedExperienceIds, experienceId];
-      return {
+  const toggleSaveExperience = async (experienceId, itemType = 'post', itemDetails = {}) => {
+    if (!currentUser) return;
+    const isSaved = currentUser.savedExperienceIds?.includes(experienceId) || false;
+    const updatedSaved = isSaved
+      ? currentUser.savedExperienceIds.filter(id => id !== experienceId)
+      : [...(currentUser.savedExperienceIds || []), experienceId];
+
+    setCurrentUser(prev => prev ? ({
+      ...prev,
+      savedExperienceIds: updatedSaved
+    }) : prev);
+
+    try {
+      if (isSaved) {
+        await api.delete(`/saved/${experienceId}`);
+      } else {
+        await api.post('/saved', {
+          itemId: experienceId,
+          itemType,
+          title: itemDetails.title || 'Saved Reflection',
+          category: itemDetails.category || 'General',
+          metadata: itemDetails
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync save state to database:', err);
+      // Rollback on error
+      setCurrentUser(prev => prev ? ({
         ...prev,
-        savedExperienceIds: updatedSaved
-      };
-    });
+        savedExperienceIds: isSaved
+          ? [...(prev.savedExperienceIds || []), experienceId]
+          : prev.savedExperienceIds.filter(id => id !== experienceId)
+      }) : prev);
+    }
   };
 
   const isExperienceSaved = (experienceId) => {

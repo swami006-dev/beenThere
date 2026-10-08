@@ -182,7 +182,7 @@ export function MyPostsPage() {
                     <button 
                       type="button" 
                       className="post-action-btn"
-                      onClick={() => navigate(`/post/${post.id}`)}
+                      onClick={() => navigate(`/post/${post.id}`, { from: '/my-experiences' })}
                     >
                       View in sanctuary
                     </button>

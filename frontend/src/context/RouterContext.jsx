@@ -7,8 +7,9 @@ export function RouterProvider({ children }) {
   const [routeState, setRouteState] = useState(null);
 
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = (e) => {
       setCurrentPath(window.location.pathname || '/');
+      setRouteState(window.history.state || e.state || null);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);

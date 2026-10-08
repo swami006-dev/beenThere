@@ -146,7 +146,13 @@ export function ExplorePage() {
                   <article 
                     key={item.id} 
                     className={`experience-entry ${layoutVariant}`}
-                    onClick={() => navigate(`/experience/${item.id}`)}
+                    onClick={() => {
+                      if (item.isPost) {
+                        navigate(`/post/${item.id}`, { from: '/explore' });
+                      } else {
+                        navigate(`/experience/${item.id}`, { from: '/explore' });
+                      }
+                    }}
                   >
                     <div className="entry-header">
                       <span className="entry-category-badge">{item.categoryLabel}</span>
@@ -178,9 +184,9 @@ export function ExplorePage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (item.isPost) {
-                            navigate(`/post/${item.id}`);
+                            navigate(`/post/${item.id}`, { from: '/explore' });
                           } else {
-                            navigate(`/experience/${item.id}`);
+                            navigate(`/experience/${item.id}`, { from: '/explore' });
                           }
                         }}
                       >

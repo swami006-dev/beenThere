@@ -1,0 +1,16 @@
+[
+  {
+    "id": "f6fc0b38-4269-4e8e-8d0e-ba7a262f66cc",
+    "user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+    "item_id": "5c59ca31-1be3-4126-84ea-2aa21691982f",
+    "item_type": "post",
+    "created_at": "2026-10-08T08:48:00.551Z"
+  },
+  {
+    "id": "46253e67-90a7-4fdd-b2be-b49102d4e140",
+    "user_id": "bacec9b6-8277-46a2-a4f7-dd2731a1f881",
+    "item_id": "00000000-0000-4000-a000-000000000024",
+    "item_type": "experience",
+    "created_at": "2026-10-08T08:51:15.948Z"
+  }
+]

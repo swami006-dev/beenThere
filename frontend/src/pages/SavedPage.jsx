@@ -4,38 +4,50 @@ import { useAuth } from '../context/AuthContext';
 import { AppNavbar } from '../components/AppNavbar';
 import { Footer } from '../components/Footer';
 import { api } from '../config/api';
-import { mapExperienceToUI, mapPostToUI } from '../utils/dataMappers';
 
 export function SavedPage() {
   const { navigate } = useRouter();
   const { currentUser, toggleSaveExperience } = useAuth();
-  const savedIds = currentUser?.savedExperienceIds || [];
 
-  const [experiences, setExperiences] = useState([]);
+  const [savedItems, setSavedItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
 
-    Promise.all([
-      api.get('/experiences').catch(() => []),
-      api.get('/posts').catch(() => [])
-    ]).then(([expRes, postsRes]) => {
-      if (!isMounted) return;
-      const rawExps = Array.isArray(expRes) ? expRes : [];
-      const rawPosts = Array.isArray(postsRes) ? postsRes : [];
-      const combined = [...rawExps.map(mapExperienceToUI), ...rawPosts.map(mapPostToUI)];
-      setExperiences(combined);
-      setLoading(false);
-    }).catch(() => {
-      if (isMounted) setLoading(false);
-    });
+    api.get('/saved')
+      .then(res => {
+        if (!isMounted) return;
+        const list = Array.isArray(res) ? res : [];
+        setSavedItems(list);
+        setLoading(false);
+      })
+      .catch(err => {
+        if (!isMounted) return;
+        console.warn('SavedPage fetch notice:', err.message);
+        setSavedItems([]);
+        setLoading(false);
+      });
 
     return () => { isMounted = false; };
-  }, []);
+  }, [currentUser?.internalId]);
 
-  const savedExperiences = experiences.filter(exp => savedIds.includes(exp.id));
+  const handleRemove = async (itemId, itemType, e) => {
+    e.stopPropagation();
+    setSavedItems(prev => prev.filter(item => (item.itemId || item.item_id) !== itemId));
+    await toggleSaveExperience(itemId, itemType);
+  };
+
+  const handleOpenItem = (item) => {
+    const targetId = item.itemId || item.item_id || item.id;
+    const isPost = (item.itemType || item.item_type) === 'post';
+    if (isPost) {
+      navigate(`/post/${targetId}`, { from: '/saved' });
+    } else {
+      navigate(`/experience/${targetId}`, { from: '/saved' });
+    }
+  };
 
   return (
     <div className="page-shell">
@@ -63,61 +75,69 @@ export function SavedPage() {
             <div className="state-screen" style={{ minHeight: '200px' }}>
               <p className="state-subtext">Loading saved reflections...</p>
             </div>
-          ) : savedExperiences.length > 0 ? (
+          ) : savedItems.length > 0 ? (
             <div className="saved-list">
-              {savedExperiences.map((exp) => (
-                <article key={exp.id} className="saved-experience-card" onClick={() => navigate(`/experience/${exp.id}`)}>
-                  <div className="saved-card-meta">
-                    <span className="entry-category-badge">{exp.categoryLabel}</span>
-                    <span className="entry-read-time">{exp.readTime}</span>
-                  </div>
+              {savedItems.map((item) => {
+                const targetId = item.itemId || item.item_id || item.id;
+                const isPost = (item.itemType || item.item_type) === 'post';
+                const category = item.category || 'General';
+                const title = item.title || 'Student Reflection';
+                const excerpt = item.metadata?.content || item.metadata?.excerpt || item.title || '';
+                const author = item.metadata?.author || (isPost ? 'Anonymous Student' : 'Curated Guidance');
+                const readTime = item.metadata?.readTime || '3 min read';
+                const timeAgo = item.timeAgo || 'Saved';
 
-                  <blockquote className="saved-card-quote">
-                    "{exp.excerpt}"
-                  </blockquote>
-
-                  {exp.whatHappened && (
-                    <p className="saved-card-snippet">
-                      {exp.whatHappened.slice(0, 140)}…
-                    </p>
-                  )}
-
-                  <div className="saved-card-footer">
-                    <div className="entry-meta">
-                      <span className="meta-author">{exp.author}</span>
-                      <span className="meta-dot">·</span>
-                      <span className="meta-context">{exp.context}</span>
-                      <span className="meta-dot">·</span>
-                      <span className="meta-time">{exp.timeAgo}</span>
+                return (
+                  <article key={item.id || targetId} className="saved-experience-card" onClick={() => handleOpenItem(item)}>
+                    <div className="saved-card-meta">
+                      <span className="entry-category-badge">{category}</span>
+                      <span className="entry-read-time">{readTime}</span>
                     </div>
 
-                    <div className="saved-card-actions">
-                      <button
-                        type="button"
-                        className="entry-read-link"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/experience/${exp.id}`);
-                        }}
-                      >
-                        <span>Read experience</span>
-                        <span className="arrow" aria-hidden="true">→</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-unsave"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSaveExperience(exp.id);
-                        }}
-                        title="Remove from saved"
-                      >
-                        Remove
-                      </button>
+                    <blockquote className="saved-card-quote">
+                      "{title}"
+                    </blockquote>
+
+                    {excerpt && excerpt !== title && (
+                      <p className="saved-card-snippet">
+                        {excerpt.slice(0, 140)}…
+                      </p>
+                    )}
+
+                    <div className="saved-card-footer">
+                      <div className="entry-meta">
+                        <span className="meta-author">{author}</span>
+                        <span className="meta-dot">·</span>
+                        <span className="meta-context">{isPost ? 'Student Reflection' : 'Curated Guidance'}</span>
+                        <span className="meta-dot">·</span>
+                        <span className="meta-time">{timeAgo}</span>
+                      </div>
+
+                      <div className="saved-card-actions">
+                        <button
+                          type="button"
+                          className="entry-read-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenItem(item);
+                          }}
+                        >
+                          <span>{isPost ? 'Read reflection' : 'Read guidance'}</span>
+                          <span className="arrow" aria-hidden="true">→</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-unsave"
+                          onClick={(e) => handleRemove(targetId, item.itemType || item.item_type || 'post', e)}
+                          title="Remove from saved"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state-card">

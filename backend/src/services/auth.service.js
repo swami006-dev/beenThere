@@ -1,5 +1,6 @@
 const { supabase, createUserClient } = require('../db/supabase');
 const { BadRequestError, UnauthorizedError } = require('../utils/errors');
+const ProfilesStore = require('./profiles.store');
 
 const ANONYMOUS_PERSONAS = [
   { name: 'Anonymous Owl', avatarKey: 'owl' },
@@ -46,21 +47,25 @@ async function getOrCreateAnonymousProfile(userClient, userId, chosenIdentity, a
         .maybeSingle();
 
       if (updated) {
-        return {
+        const res = {
           id: updated.id,
           anonymousDisplayName: updated.display_name,
           avatarKey: updated.avatar_key || 'owl',
           academicContext: academicContext || 'College student'
         };
+        ProfilesStore.setProfile(res.id, { userId, displayName: res.anonymousDisplayName, avatarKey: res.avatarKey });
+        return res;
       }
     }
 
-    return {
+    const res = {
       id: existing.id,
       anonymousDisplayName: existing.display_name || existing.anonymous_display_name || existing.anonymous_name || 'Anonymous Peer',
       avatarKey: existing.avatar_key || 'owl',
       academicContext: academicContext || 'College student'
     };
+    ProfilesStore.setProfile(res.id, { userId, displayName: res.anonymousDisplayName, avatarKey: res.avatarKey });
+    return res;
   }
 
   // Create new anonymous profile
@@ -79,20 +84,24 @@ async function getOrCreateAnonymousProfile(userClient, userId, chosenIdentity, a
 
   if (createErr || !created) {
     console.warn('Anonymous profile creation warning:', createErr);
-    return {
+    const fallbackRes = {
       id: userId,
       anonymousDisplayName: persona.name,
       avatarKey: persona.avatarKey,
       academicContext: academicContext || 'College student'
     };
+    ProfilesStore.setProfile(fallbackRes.id, { userId, displayName: fallbackRes.anonymousDisplayName, avatarKey: fallbackRes.avatarKey });
+    return fallbackRes;
   }
 
-  return {
+  const createdRes = {
     id: created.id,
     anonymousDisplayName: created.display_name || persona.name,
     avatarKey: created.avatar_key || persona.avatarKey,
     academicContext: academicContext || 'College student'
   };
+  ProfilesStore.setProfile(createdRes.id, { userId, displayName: createdRes.anonymousDisplayName, avatarKey: createdRes.avatarKey });
+  return createdRes;
 }
 
 async function getUserRole(userClient, user) {

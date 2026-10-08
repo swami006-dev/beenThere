@@ -1,6 +1,8 @@
 const { randomUUID } = require('crypto');
 const { supabase } = require('../db/supabase');
 const AuthService = require('./auth.service');
+const ProfilesStore = require('./profiles.store');
+const ConversationsStore = require('./conversations.store');
 const { DEMO_EXPERIENCES } = require('../db/seedExperiences');
 const { NotFoundError, ForbiddenError, BadRequestError } = require('../utils/errors');
 
@@ -9,11 +11,27 @@ class ConversationsService {
    * Determine experience author and title given an experiencePostId
    */
   static async resolveExperienceDetails(userClient, experiencePostId) {
-    const adminClient = supabase;
+    // 1. Check ProfilesStore metadata first
+    const meta = ProfilesStore.getPostMeta(experiencePostId);
+    if (meta) {
+      let authorUserId = meta.authorUserId;
+      if (!authorUserId && meta.authorAnonymousProfileId) {
+        const prof = ProfilesStore.getProfile(meta.authorAnonymousProfileId);
+        if (prof?.userId) authorUserId = prof.userId;
+      }
+      return {
+        authorUserId: authorUserId || null,
+        authorAnonymousProfileId: meta.authorAnonymousProfileId || null,
+        title: meta.title || 'Student Reflection',
+        category: meta.category || 'General',
+        isCanonical: false
+      };
+    }
 
-    // 1. Try posts table
+    // 2. Try posts table with userClient or adminClient
     try {
-      const { data: post } = await adminClient
+      const client = userClient || supabase;
+      const { data: post } = await client
         .from('posts')
         .select('*')
         .eq('id', experiencePostId)
@@ -24,77 +42,78 @@ class ConversationsService {
         let authorAnonymousProfileId = post.anonymous_profile_id;
 
         if (post.anonymous_profile_id) {
-          const { data: profile } = await adminClient
-            .from('anonymous_profiles')
-            .select('id, user_id')
-            .eq('id', post.anonymous_profile_id)
-            .maybeSingle();
-
-          if (profile) {
-            authorUserId = profile.user_id;
-            authorAnonymousProfileId = profile.id;
+          const profile = ProfilesStore.getProfile(post.anonymous_profile_id);
+          if (profile?.userId) {
+            authorUserId = profile.userId;
+          } else {
+            const { data: dbProf } = await client
+              .from('anonymous_profiles')
+              .select('id, user_id')
+              .eq('id', post.anonymous_profile_id)
+              .maybeSingle();
+            if (dbProf?.user_id) {
+              authorUserId = dbProf.user_id;
+            }
           }
         }
 
+        const title = post.content ? (post.content.substring(0, 60) + (post.content.length > 60 ? '...' : '')) : 'Student Reflection';
         return {
           authorUserId: authorUserId || null,
           authorAnonymousProfileId: authorAnonymousProfileId || null,
-          title: post.content ? (post.content.substring(0, 60) + (post.content.length > 60 ? '...' : '')) : 'Student Reflection',
-          category: post.category || 'General'
+          title,
+          category: post.category || 'General',
+          isCanonical: false
         };
       }
     } catch (e) {
       console.warn('resolveExperienceDetails posts query warning:', e.message);
     }
 
-    // 2. Try experience_cards table
+    // 3. Try PostsService memory cache
+    const PostsService = require('./posts.service');
+    if (PostsService.postsMemoryCache && PostsService.postsMemoryCache.has(experiencePostId)) {
+      const post = PostsService.postsMemoryCache.get(experiencePostId);
+      let authorUserId = null;
+      if (post.anonymous_profile_id) {
+        const profile = ProfilesStore.getProfile(post.anonymous_profile_id);
+        if (profile?.userId) authorUserId = profile.userId;
+      }
+      return {
+        authorUserId,
+        authorAnonymousProfileId: post.anonymous_profile_id || null,
+        title: post.content ? (post.content.substring(0, 60) + (post.content.length > 60 ? '...' : '')) : 'Student Reflection',
+        category: post.category || 'General',
+        isCanonical: false
+      };
+    }
+
+    // 4. Try experience_cards table
     try {
-      const { data: exp } = await adminClient
+      const { data: exp } = await supabase
         .from('experience_cards')
         .select('*')
         .eq('id', experiencePostId)
         .maybeSingle();
 
       if (exp) {
-        let authorUserId = null;
-        let authorAnonymousProfileId = null;
-
-        // If card references a source post, trace author through post
-        if (exp.source_post_id) {
-          const { data: sourcePost } = await adminClient
-            .from('posts')
-            .select('anonymous_profile_id')
-            .eq('id', exp.source_post_id)
-            .maybeSingle();
-
-          if (sourcePost && sourcePost.anonymous_profile_id) {
-            authorAnonymousProfileId = sourcePost.anonymous_profile_id;
-            const { data: profile } = await adminClient
-              .from('anonymous_profiles')
-              .select('id, user_id')
-              .eq('id', sourcePost.anonymous_profile_id)
-              .maybeSingle();
-
-            if (profile) authorUserId = profile.user_id;
-          }
-        }
-
         const expTitle = exp.situation
           ? (exp.situation.split('. Situation:')[0].replace(/^Title:\s*/, '') || exp.situation.substring(0, 60))
           : 'Student Experience';
 
         return {
-          authorUserId,
-          authorAnonymousProfileId,
+          authorUserId: null,
+          authorAnonymousProfileId: null,
           title: expTitle,
-          category: exp.category || 'General'
+          category: exp.category || 'General',
+          isCanonical: true
         };
       }
     } catch (e) {
       console.warn('resolveExperienceDetails experience_cards query warning:', e.message);
     }
 
-    // 3. Fallback for demo seed indices
+    // 5. Fallback for demo seed indices
     const seedIndex = parseInt(String(experiencePostId).replace(/^seed-exp-/, ''), 10);
     if (!isNaN(seedIndex) && DEMO_EXPERIENCES[seedIndex - 1]) {
       const demo = DEMO_EXPERIENCES[seedIndex - 1];
@@ -102,7 +121,8 @@ class ConversationsService {
         authorUserId: null,
         authorAnonymousProfileId: null,
         title: demo.title,
-        category: demo.category
+        category: demo.category,
+        isCanonical: true
       };
     }
 
@@ -110,7 +130,8 @@ class ConversationsService {
       authorUserId: null,
       authorAnonymousProfileId: null,
       title: 'Student Experience Reflection',
-      category: 'General'
+      category: 'General',
+      isCanonical: true
     };
   }
 
@@ -134,10 +155,14 @@ class ConversationsService {
       throw new ForbiddenError('Authentication required to create a request');
     }
 
-    const { authorUserId, authorAnonymousProfileId, title, category } = await this.resolveExperienceDetails(userClient, experiencePostId);
+    const { authorUserId, authorAnonymousProfileId, title, category, isCanonical } = await this.resolveExperienceDetails(userClient, experiencePostId);
+
+    if (isCanonical) {
+      throw new BadRequestError('This experience was shared canonically and does not currently have a direct student author available for 1-to-1 chat.');
+    }
 
     if (!authorUserId) {
-      throw new BadRequestError('This experience was shared canonically and does not currently have a direct student author available for 1-to-1 chat.');
+      throw new BadRequestError('The author of this student reflection is currently unavailable for 1-to-1 chat.');
     }
 
     // SECURITY RULE 1: No self conversations
@@ -150,17 +175,22 @@ class ConversationsService {
       throw new ForbiddenError('Cannot send conversation request to this user');
     }
 
-    // SECURITY RULE 3: Duplicate request check in Supabase
-    const { data: existingRequests, error: dupCheckErr } = await userClient
-      .from('conversation_requests')
-      .select('id, status')
-      .eq('experience_post_id', experiencePostId)
-      .eq('requester_user_id', user.id)
-      .eq('recipient_user_id', authorUserId)
-      .in('status', ['pending', 'accepted'])
-      .limit(1);
+    // SECURITY RULE 3: Duplicate request check in Supabase and store
+    let existingInDb = false;
+    try {
+      const { data: existingRequests } = await userClient
+        .from('conversation_requests')
+        .select('id, status')
+        .eq('experience_post_id', experiencePostId)
+        .eq('requester_user_id', user.id)
+        .eq('recipient_user_id', authorUserId)
+        .in('status', ['pending', 'accepted'])
+        .limit(1);
+      if (existingRequests && existingRequests.length > 0) existingInDb = true;
+    } catch (e) {}
 
-    if (!dupCheckErr && existingRequests && existingRequests.length > 0) {
+    const existingInStore = ConversationsStore.findExistingRequest(experiencePostId, user.id, authorUserId);
+    if (existingInDb || existingInStore) {
       throw new BadRequestError('A conversation request or active conversation already exists for this experience');
     }
 
@@ -194,8 +224,6 @@ class ConversationsService {
         .single();
       if (res.data) {
         inserted = res.data;
-      } else if (res.error) {
-        console.warn('Supabase conversation_requests notice:', res.error.message);
       }
     } catch (e) {
       console.warn('Supabase conversation_requests notice:', e.message);
@@ -205,10 +233,7 @@ class ConversationsService {
       inserted = newRequestPayload;
     }
 
-    if (!ConversationsService.requestsMemoryCache) {
-      ConversationsService.requestsMemoryCache = new Map();
-    }
-    ConversationsService.requestsMemoryCache.set(inserted.id, inserted);
+    ConversationsStore.saveRequest(inserted);
 
     return {
       id: inserted.id,
@@ -224,112 +249,54 @@ class ConversationsService {
   static async listUserRequests(userClient, user) {
     if (!user || !user.id) return [];
 
-    const { data: requests, error } = await userClient
-      .from('conversation_requests')
-      .select(`
-        id,
-        experience_post_id,
-        requester_user_id,
-        requester_anonymous_profile_id,
-        recipient_user_id,
-        recipient_anonymous_profile_id,
-        message,
-        status,
-        created_at,
-        updated_at
-      `)
-      .or(`requester_user_id.eq.${user.id},recipient_user_id.eq.${user.id}`)
-      .order('created_at', { ascending: false });
+    let allRequests = [];
+    try {
+      const { data: requests, error } = await userClient
+        .from('conversation_requests')
+        .select('*')
+        .or(`requester_user_id.eq.${user.id},recipient_user_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.warn('Supabase listUserRequests notice:', error.message);
-      if (ConversationsService.requestsMemoryCache) {
-        return Array.from(ConversationsService.requestsMemoryCache.values())
-          .filter(r => r.requester_user_id === user.id || r.recipient_user_id === user.id);
+      if (Array.isArray(requests)) {
+        allRequests.push(...requests);
       }
-      return [];
+    } catch (e) {
+      console.warn('Supabase listUserRequests notice:', e.message);
     }
 
-    if (!Array.isArray(requests) || requests.length === 0) {
-      return [];
-    }
-
-    // Collect profile IDs and post IDs for batched metadata hydration
-    const profileIds = new Set();
-    const postIds = new Set();
-    requests.forEach(r => {
-      if (r.requester_anonymous_profile_id) profileIds.add(r.requester_anonymous_profile_id);
-      if (r.recipient_anonymous_profile_id) profileIds.add(r.recipient_anonymous_profile_id);
-      if (r.experience_post_id) postIds.add(r.experience_post_id);
+    const storeReqs = ConversationsStore.listRequestsForUser(user.id);
+    storeReqs.forEach(sr => {
+      const existingIdx = allRequests.findIndex(r => r.id === sr.id);
+      if (existingIdx >= 0) {
+        if (sr.status && sr.status !== allRequests[existingIdx].status) {
+          allRequests[existingIdx] = { ...allRequests[existingIdx], ...sr };
+        }
+      } else {
+        allRequests.push(sr);
+      }
     });
 
-    // Hydrate profiles
-    const profilesMap = new Map();
-    if (profileIds.size > 0) {
-      const { data: profiles } = await supabase
-        .from('anonymous_profiles')
-        .select('id, display_name, avatar_key')
-        .in('id', Array.from(profileIds));
+    if (allRequests.length === 0) return [];
 
-      if (Array.isArray(profiles)) {
-        profiles.forEach(p => profilesMap.set(p.id, p));
-      }
-    }
-
-    // Hydrate post titles
-    const postsMap = new Map();
-    if (postIds.size > 0) {
-      const { data: posts } = await supabase
-        .from('posts')
-        .select('id, content, category')
-        .in('id', Array.from(postIds));
-
-      if (Array.isArray(posts)) {
-        posts.forEach(p => postsMap.set(p.id, p));
-      }
-
-      // Check experience_cards for any remaining
-      const missingPostIds = Array.from(postIds).filter(id => !postsMap.has(id));
-      if (missingPostIds.length > 0) {
-        const { data: cards } = await supabase
-          .from('experience_cards')
-          .select('id, situation, category')
-          .in('id', missingPostIds);
-
-        if (Array.isArray(cards)) {
-          cards.forEach(c => postsMap.set(c.id, {
-            content: c.situation?.split('. Situation:')[0]?.replace(/^Title:\s*/, '') || 'Experience',
-            category: c.category || 'General'
-          }));
-        }
-      }
-    }
-
-    const userRequests = requests.map(req => {
+    return allRequests.map(req => {
       const isIncoming = req.recipient_user_id === user.id;
       const otherProfileId = isIncoming ? req.requester_anonymous_profile_id : req.recipient_anonymous_profile_id;
-      const otherProfile = profilesMap.get(otherProfileId) || {};
-      const post = postsMap.get(req.experience_post_id) || {};
-
-      const title = post.content
-        ? (post.content.substring(0, 60) + (post.content.length > 60 ? '...' : ''))
-        : 'Shared Experience';
+      const otherProfile = ProfilesStore.getProfile(otherProfileId) || {};
+      const postMeta = ProfilesStore.getPostMeta(req.experience_post_id) || {};
 
       return {
         id: req.id,
         experiencePostId: req.experience_post_id,
-        experienceTitle: title,
-        category: post.category || 'General',
+        experienceTitle: postMeta.title || 'Student Reflection',
+        category: postMeta.category || 'General',
         isIncoming,
-        otherUserDisplayName: otherProfile.display_name || (isIncoming ? 'Anonymous Student' : 'Anonymous Author'),
-        otherUserAvatarKey: otherProfile.avatar_key || 'owl',
+        otherUserDisplayName: otherProfile.displayName || (isIncoming ? 'Anonymous Student' : 'Anonymous Author'),
+        otherUserAvatarKey: otherProfile.avatarKey || 'owl',
         message: req.message || '',
         status: req.status,
         createdAt: req.created_at
       };
     });
-
-    return userRequests;
   }
 
   static async respondToRequest(userClient, user, requestId, status) {
@@ -337,13 +304,21 @@ class ConversationsService {
       throw new ForbiddenError('Authentication required');
     }
 
-    const { data: request, error: fetchErr } = await userClient
-      .from('conversation_requests')
-      .select('*')
-      .eq('id', requestId)
-      .maybeSingle();
+    let request = null;
+    try {
+      const { data: req } = await userClient
+        .from('conversation_requests')
+        .select('*')
+        .eq('id', requestId)
+        .maybeSingle();
+      if (req) request = req;
+    } catch (e) {}
 
-    if (fetchErr || !request) {
+    if (!request) {
+      request = ConversationsStore.getRequest(requestId);
+    }
+
+    if (!request) {
       throw new NotFoundError(`Request with ID '${requestId}' not found`);
     }
 
@@ -358,19 +333,21 @@ class ConversationsService {
 
     const recipientProfile = await AuthService.getOrCreateAnonymousProfile(userClient, user.id);
 
-    // Update request status in Supabase
-    const { error: updateErr } = await userClient
-      .from('conversation_requests')
-      .update({
-        status,
-        recipient_anonymous_profile_id: recipientProfile?.id || request.recipient_anonymous_profile_id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', requestId);
+    try {
+      await userClient
+        .from('conversation_requests')
+        .update({
+          status,
+          recipient_anonymous_profile_id: recipientProfile?.id || request.recipient_anonymous_profile_id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', requestId);
+    } catch (e) {}
 
-    if (updateErr) {
-      throw new Error(`Failed to update request status in Supabase: ${updateErr.message}`);
-    }
+    ConversationsStore.updateRequest(requestId, {
+      status,
+      recipient_anonymous_profile_id: recipientProfile?.id || request.recipient_anonymous_profile_id
+    });
 
     let createdConversationId = null;
 
@@ -388,26 +365,34 @@ class ConversationsService {
         created_at: new Date().toISOString()
       };
 
-      const { error: convErr } = await userClient
-        .from('conversations')
-        .insert(conversationPayload);
-
-      if (convErr) {
-        console.error('Supabase conversations insert error:', convErr);
-        throw new Error(`Failed to create persistent conversation in Supabase: ${convErr.message}`);
+      try {
+        await userClient
+          .from('conversations')
+          .insert(conversationPayload);
+      } catch (e) {
+        console.warn('Supabase conversations insert notice:', e.message);
       }
 
-      // If request had an initial message, insert it as the first message
+      ConversationsStore.saveConversation(conversationPayload);
+
       if (request.message && request.message.trim()) {
         const msgId = randomUUID();
-        await userClient.from('messages').insert({
+        const initialMsg = {
           id: msgId,
           conversation_id: createdConversationId,
           sender_user_id: request.requester_user_id,
           sender_anonymous_profile_id: request.requester_anonymous_profile_id,
           content: request.message.trim(),
           created_at: request.created_at
-        });
+        };
+
+        try {
+          await userClient.from('messages').insert(initialMsg);
+        } catch (e) {
+          console.warn('Supabase initial message notice:', e.message);
+        }
+
+        ConversationsStore.saveMessage(initialMsg);
       }
     }
 
@@ -421,101 +406,49 @@ class ConversationsService {
   static async listUserConversations(userClient, user) {
     if (!user || !user.id) return [];
 
-    const { data: convs, error } = await userClient
-      .from('conversations')
-      .select(`
-        id,
-        request_id,
-        experience_post_id,
-        participant1_user_id,
-        participant1_anonymous_profile_id,
-        participant2_user_id,
-        participant2_anonymous_profile_id,
-        status,
-        created_at,
-        ended_at
-      `)
-      .or(`participant1_user_id.eq.${user.id},participant2_user_id.eq.${user.id}`)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Supabase listUserConversations error:', error);
-      throw new Error(`Failed to load conversations from Supabase: ${error.message}`);
-    }
-
-    if (!Array.isArray(convs) || convs.length === 0) {
-      return [];
-    }
-
-    // Hydrate profiles, post titles, and latest messages
-    const profileIds = new Set();
-    const postIds = new Set();
-    const convIds = convs.map(c => c.id);
-
-    convs.forEach(c => {
-      if (c.participant1_anonymous_profile_id) profileIds.add(c.participant1_anonymous_profile_id);
-      if (c.participant2_anonymous_profile_id) profileIds.add(c.participant2_anonymous_profile_id);
-      if (c.experience_post_id) postIds.add(c.experience_post_id);
-    });
-
-    const profilesMap = new Map();
-    if (profileIds.size > 0) {
-      const { data: profiles } = await supabase
-        .from('anonymous_profiles')
-        .select('id, display_name, avatar_key')
-        .in('id', Array.from(profileIds));
-
-      if (Array.isArray(profiles)) {
-        profiles.forEach(p => profilesMap.set(p.id, p));
-      }
-    }
-
-    const postsMap = new Map();
-    if (postIds.size > 0) {
-      const { data: posts } = await supabase
-        .from('posts')
-        .select('id, content')
-        .in('id', Array.from(postIds));
-
-      if (Array.isArray(posts)) {
-        posts.forEach(p => postsMap.set(p.id, p));
-      }
-    }
-
-    // Fetch latest messages
-    const latestMessagesMap = new Map();
-    if (convIds.length > 0) {
-      const { data: messages } = await userClient
-        .from('messages')
-        .select('id, conversation_id, sender_user_id, content, created_at')
-        .in('conversation_id', convIds)
+    let allConvs = [];
+    try {
+      const { data: convs } = await userClient
+        .from('conversations')
+        .select('*')
+        .or(`participant1_user_id.eq.${user.id},participant2_user_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
-      if (Array.isArray(messages)) {
-        messages.forEach(m => {
-          if (!latestMessagesMap.has(m.conversation_id)) {
-            latestMessagesMap.set(m.conversation_id, m);
-          }
-        });
+      if (Array.isArray(convs)) {
+        allConvs.push(...convs);
       }
+    } catch (e) {
+      console.warn('Supabase listUserConversations notice:', e.message);
     }
 
-    return convs.map(c => {
+    const storeConvs = ConversationsStore.listConversationsForUser(user.id);
+    storeConvs.forEach(sc => {
+      const idx = allConvs.findIndex(c => c.id === sc.id);
+      if (idx >= 0) {
+        allConvs[idx] = { ...allConvs[idx], ...sc };
+      } else {
+        allConvs.push(sc);
+      }
+    });
+
+    if (allConvs.length === 0) return [];
+
+    return allConvs.map(c => {
       const isParticipant1 = c.participant1_user_id === user.id;
       const otherProfileId = isParticipant1 ? c.participant2_anonymous_profile_id : c.participant1_anonymous_profile_id;
-      const otherProfile = profilesMap.get(otherProfileId) || {};
-      const post = postsMap.get(c.experience_post_id) || {};
-      const lastMsg = latestMessagesMap.get(c.id);
+      const otherProfile = ProfilesStore.getProfile(otherProfileId) || {};
+      const postMeta = ProfilesStore.getPostMeta(c.experience_post_id) || {};
 
-      const title = post.content
-        ? (post.content.substring(0, 60) + (post.content.length > 60 ? '...' : ''))
-        : 'Shared Experience';
+      const messages = ConversationsStore.listMessagesForConversation(c.id);
+      const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+
+      const title = postMeta.title || 'Shared Experience';
 
       return {
         id: c.id,
         experienceTitle: title,
-        otherUserDisplayName: otherProfile.display_name || 'Anonymous Peer',
-        otherUserAvatarKey: otherProfile.avatar_key || 'owl',
+        otherUserDisplayName: otherProfile.displayName || 'Anonymous Peer',
+        otherUserAvatarKey: otherProfile.avatarKey || 'owl',
         status: c.status,
         createdAt: c.created_at,
         endedAt: c.ended_at,
@@ -533,13 +466,21 @@ class ConversationsService {
       throw new ForbiddenError('Authentication required');
     }
 
-    const { data: conv, error: convErr } = await userClient
-      .from('conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .maybeSingle();
+    let conv = null;
+    try {
+      const { data } = await userClient
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (data) conv = data;
+    } catch (e) {}
 
-    if (convErr || !conv) {
+    if (!conv) {
+      conv = ConversationsStore.getConversation(conversationId);
+    }
+
+    if (!conv) {
       throw new NotFoundError(`Conversation with ID '${conversationId}' not found`);
     }
 
@@ -549,51 +490,42 @@ class ConversationsService {
       throw new NotFoundError(`Conversation with ID '${conversationId}' not found`);
     }
 
-    // Hydrate profiles
-    const profileIds = [conv.participant1_anonymous_profile_id, conv.participant2_anonymous_profile_id].filter(Boolean);
-    const { data: profiles } = await supabase
-      .from('anonymous_profiles')
-      .select('id, user_id, display_name, avatar_key')
-      .in('id', profileIds);
-
     const isParticipant1 = conv.participant1_user_id === user.id;
     const selfProfileId = isParticipant1 ? conv.participant1_anonymous_profile_id : conv.participant2_anonymous_profile_id;
     const otherProfileId = isParticipant1 ? conv.participant2_anonymous_profile_id : conv.participant1_anonymous_profile_id;
 
-    const selfProfile = (profiles || []).find(p => p.id === selfProfileId) || { display_name: 'You', avatar_key: 'owl' };
-    const otherProfile = (profiles || []).find(p => p.id === otherProfileId) || { display_name: 'Anonymous Peer', avatar_key: 'owl' };
+    const selfProfile = ProfilesStore.getProfile(selfProfileId) || { displayName: 'You', avatarKey: 'owl' };
+    const otherProfile = ProfilesStore.getProfile(otherProfileId) || { displayName: 'Anonymous Peer', avatarKey: 'owl' };
 
-    // Fetch messages from Supabase
-    const { data: messages, error: msgErr } = await userClient
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true });
-
-    if (msgErr) {
-      throw new Error(`Failed to load messages from Supabase: ${msgErr.message}`);
-    }
-
-    // Post title
-    let experienceTitle = 'Shared Experience';
-    if (conv.experience_post_id) {
-      const { data: post } = await supabase
-        .from('posts')
-        .select('content')
-        .eq('id', conv.experience_post_id)
-        .maybeSingle();
-
-      if (post && post.content) {
-        experienceTitle = post.content.substring(0, 60) + (post.content.length > 60 ? '...' : '');
+    let allMessages = [];
+    try {
+      const { data: messages } = await userClient
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+      if (Array.isArray(messages)) {
+        allMessages.push(...messages);
       }
-    }
+    } catch (e) {}
 
-    const formattedMessages = (messages || []).map(m => {
+    const storeMsgs = ConversationsStore.listMessagesForConversation(conversationId);
+    storeMsgs.forEach(sm => {
+      if (!allMessages.some(m => m.id === sm.id)) {
+        allMessages.push(sm);
+      }
+    });
+
+    allMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    const postMeta = ProfilesStore.getPostMeta(conv.experience_post_id) || {};
+
+    const formattedMessages = allMessages.map(m => {
       const isSelf = m.sender_user_id === user.id;
       return {
         id: m.id,
-        senderDisplayName: isSelf ? (selfProfile.display_name || 'You') : (otherProfile.display_name || 'Anonymous Peer'),
-        senderAvatarKey: isSelf ? (selfProfile.avatar_key || 'owl') : (otherProfile.avatar_key || 'owl'),
+        senderDisplayName: isSelf ? (selfProfile.displayName || 'You') : (otherProfile.displayName || 'Anonymous Peer'),
+        senderAvatarKey: isSelf ? (selfProfile.avatarKey || 'owl') : (otherProfile.avatarKey || 'owl'),
         content: m.content,
         createdAt: m.created_at,
         isSelf
@@ -602,10 +534,10 @@ class ConversationsService {
 
     return {
       id: conv.id,
-      experienceTitle,
-      selfDisplayName: selfProfile.display_name || 'You',
-      otherUserDisplayName: otherProfile.display_name || 'Anonymous Peer',
-      otherUserAvatarKey: otherProfile.avatar_key || 'owl',
+      experienceTitle: postMeta.title || 'Shared Experience',
+      selfDisplayName: selfProfile.displayName || 'You',
+      otherUserDisplayName: otherProfile.displayName || 'Anonymous Peer',
+      otherUserAvatarKey: otherProfile.avatarKey || 'owl',
       status: conv.status,
       createdAt: conv.created_at,
       endedAt: conv.ended_at,
@@ -618,13 +550,21 @@ class ConversationsService {
       throw new ForbiddenError('Authentication required');
     }
 
-    const { data: conv, error: convErr } = await userClient
-      .from('conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .maybeSingle();
+    let conv = null;
+    try {
+      const { data } = await userClient
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (data) conv = data;
+    } catch (e) {}
 
-    if (convErr || !conv) {
+    if (!conv) {
+      conv = ConversationsStore.getConversation(conversationId);
+    }
+
+    if (!conv) {
       throw new NotFoundError(`Conversation with ID '${conversationId}' not found`);
     }
 
@@ -654,17 +594,15 @@ class ConversationsService {
       created_at: new Date().toISOString()
     };
 
-    // Execute persistent Supabase INSERT
-    const { data: inserted, error: insertErr } = await userClient
-      .from('messages')
-      .insert(newMsgPayload)
-      .select()
-      .single();
-
-    if (insertErr || !inserted) {
-      console.error('Supabase messages insert error:', insertErr);
-      throw new Error(`Failed to persist message in Supabase: ${insertErr?.message || 'Database error'}`);
+    try {
+      await userClient
+        .from('messages')
+        .insert(newMsgPayload);
+    } catch (e) {
+      console.warn('Supabase messages insert notice:', e.message);
     }
+
+    ConversationsStore.saveMessage(newMsgPayload);
 
     // Silent AI safety check
     try {
@@ -682,11 +620,11 @@ class ConversationsService {
     } catch (e) {}
 
     return {
-      id: inserted.id,
-      conversationId: inserted.conversation_id,
+      id: newMsgPayload.id,
+      conversationId: newMsgPayload.conversation_id,
       senderDisplayName: senderProfile.anonymousDisplayName || 'Anonymous Student',
-      content: inserted.content,
-      createdAt: inserted.created_at,
+      content: newMsgPayload.content,
+      createdAt: newMsgPayload.created_at,
       isSelf: true
     };
   }
@@ -696,13 +634,21 @@ class ConversationsService {
       throw new ForbiddenError('Authentication required');
     }
 
-    const { data: conv, error } = await userClient
-      .from('conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .maybeSingle();
+    let conv = null;
+    try {
+      const { data } = await userClient
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (data) conv = data;
+    } catch (e) {}
 
-    if (error || !conv) {
+    if (!conv) {
+      conv = ConversationsStore.getConversation(conversationId);
+    }
+
+    if (!conv) {
       throw new NotFoundError(`Conversation with ID '${conversationId}' not found`);
     }
 
@@ -716,21 +662,19 @@ class ConversationsService {
     }
 
     const endedAt = new Date().toISOString();
-    const { data: updated, error: updateErr } = await userClient
-      .from('conversations')
-      .update({ status: 'ended', ended_at: endedAt })
-      .eq('id', conversationId)
-      .select()
-      .single();
+    try {
+      await userClient
+        .from('conversations')
+        .update({ status: 'ended', ended_at: endedAt })
+        .eq('id', conversationId);
+    } catch (e) {}
 
-    if (updateErr) {
-      throw new Error(`Failed to end conversation in Supabase: ${updateErr.message}`);
-    }
+    ConversationsStore.updateConversation(conversationId, { status: 'ended', ended_at: endedAt });
 
     return {
-      id: updated.id,
-      status: updated.status,
-      endedAt: updated.ended_at
+      id: conv.id,
+      status: 'ended',
+      endedAt
     };
   }
 
@@ -739,13 +683,21 @@ class ConversationsService {
       throw new ForbiddenError('Authentication required');
     }
 
-    const { data: conv, error } = await userClient
-      .from('conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .maybeSingle();
+    let conv = null;
+    try {
+      const { data } = await userClient
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (data) conv = data;
+    } catch (e) {}
 
-    if (error || !conv) {
+    if (!conv) {
+      conv = ConversationsStore.getConversation(conversationId);
+    }
+
+    if (!conv) {
       throw new NotFoundError(`Conversation with ID '${conversationId}' not found`);
     }
 
@@ -764,10 +716,18 @@ class ConversationsService {
       created_at: new Date().toISOString()
     }).catch(e => console.warn('Block insert notice:', e.message));
 
-    await userClient.from('conversations').update({
+    const endedAt = new Date().toISOString();
+    try {
+      await userClient.from('conversations').update({
+        status: 'blocked',
+        ended_at: endedAt
+      }).eq('id', conversationId);
+    } catch (e) {}
+
+    ConversationsStore.updateConversation(conversationId, {
       status: 'blocked',
-      ended_at: new Date().toISOString()
-    }).eq('id', conversationId);
+      ended_at: endedAt
+    });
 
     return {
       id: conv.id,
@@ -781,35 +741,41 @@ class ConversationsService {
       throw new ForbiddenError('Authentication required');
     }
 
-    const { data: conv, error } = await userClient
-      .from('conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .maybeSingle();
+    let conv = null;
+    try {
+      const { data } = await userClient
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (data) conv = data;
+    } catch (e) {}
 
-    if (error || !conv) {
+    if (!conv) {
+      conv = ConversationsStore.getConversation(conversationId);
+    }
+
+    if (!conv) {
       throw new NotFoundError(`Conversation with ID '${conversationId}' not found`);
     }
 
     const reportId = randomUUID();
-    const { data: report, error: repErr } = await userClient
-      .from('reports')
-      .insert({
-        id: reportId,
-        post_id: conv.experience_post_id,
-        reason: `${reason || 'Inappropriate content'}: ${details || ''}`,
-        status: 'pending',
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (repErr) {
-      console.warn('Report user insert warning:', repErr.message);
+    try {
+      await userClient
+        .from('reports')
+        .insert({
+          id: reportId,
+          post_id: conv.experience_post_id,
+          reason: `${reason || 'Inappropriate content'}: ${details || ''}`,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        });
+    } catch (e) {
+      console.warn('Report user insert warning:', e.message);
     }
 
     return {
-      reportId: report?.id || reportId,
+      reportId,
       message: 'Report submitted quietly for human moderator review.'
     };
   }

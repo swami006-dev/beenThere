@@ -14,6 +14,8 @@ const moderationRoutes = require('./routes/moderation.routes');
 const experiencesRoutes = require('./routes/experiences.routes');
 const aiRoutes = require('./routes/ai.routes');
 const conversationsRoutes = require('./routes/conversations.routes');
+const savedRoutes = require('./routes/saved.routes');
+const reactionsRoutes = require('./routes/reactions.routes');
 
 const app = express();
 
@@ -65,6 +67,8 @@ app.use('/api/moderation', moderationRoutes);
 app.use('/api/experiences', experiencesRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/conversations', conversationsRoutes);
+app.use('/api/saved', savedRoutes);
+app.use('/api/reactions', reactionsRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);
@@ -91,8 +95,14 @@ if (require.main === module) {
     });
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  // Keep process event loop active on Windows
+  process.stdin?.resume?.();
+  const keepAlive = setInterval(() => {}, 60000);
+
+  if (process.env.NODE_ENV === 'production') {
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  }
 }
 
 module.exports = app;

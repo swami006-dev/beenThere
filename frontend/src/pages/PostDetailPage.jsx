@@ -9,8 +9,8 @@ import { api } from '../config/api';
 import { mapPostToUI } from '../utils/dataMappers';
 
 export function PostDetailPage() {
-  const { match, navigate } = useRouter();
-  const { isAuthenticated, currentUser } = useAuth();
+  const { match, navigate, routeState } = useRouter();
+  const { isAuthenticated, currentUser, isExperienceSaved, toggleSaveExperience } = useAuth();
   const id = match.params.id;
 
   const [post, setPost] = useState(null);
@@ -23,6 +23,11 @@ export function PostDetailPage() {
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [reportError, setReportError] = useState('');
+
+  // Scoped helpful reactions state (starts at 0, strictly scoped to post id)
+  const [reactionCount, setReactionCount] = useState(0);
+  const [userReacted, setUserReacted] = useState(false);
+  const [reactionLoading, setReactionLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,6 +56,22 @@ export function PostDetailPage() {
         console.warn('Responses fetch notice:', err.message);
       }
 
+      // Fetch scoped reactions for this specific post
+      try {
+        const reactionRes = await api.get(`/reactions/${id}`);
+        if (reactionRes && typeof reactionRes.count === 'number') {
+          if (isMounted) {
+            setReactionCount(reactionRes.count);
+            setUserReacted(!!reactionRes.userReacted);
+          }
+        }
+      } catch (rErr) {
+        if (isMounted) {
+          setReactionCount(0);
+          setUserReacted(false);
+        }
+      }
+
       if (!isMounted) return;
       setPost(postData);
       setResponses(respData);
@@ -60,6 +81,60 @@ export function PostDetailPage() {
     fetchData();
     return () => { isMounted = false; };
   }, [id]);
+
+  const handleBack = () => {
+    if (routeState?.from === '/matching') {
+      navigate('/matching', routeState.matchingState || null);
+    } else if (routeState?.from) {
+      navigate(routeState.from);
+    } else if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/explore');
+    }
+  };
+
+  const handleToggleReaction = async () => {
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=/post/${id}`);
+      return;
+    }
+    if (reactionLoading) return;
+    setReactionLoading(true);
+
+    const nextReacted = !userReacted;
+    const nextCount = nextReacted ? reactionCount + 1 : Math.max(0, reactionCount - 1);
+    setUserReacted(nextReacted);
+    setReactionCount(nextCount);
+
+    try {
+      const res = await api.post(`/reactions/${id}`);
+      if (res && typeof res.count === 'number') {
+        setReactionCount(res.count);
+        setUserReacted(!!res.userReacted);
+      }
+    } catch (err) {
+      console.error('Failed to toggle reaction:', err);
+      setUserReacted(!nextReacted);
+      setReactionCount(reactionCount);
+    } finally {
+      setReactionLoading(false);
+    }
+  };
+
+  const isSaved = isExperienceSaved(id);
+  const handleToggleSave = async () => {
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=/post/${id}`);
+      return;
+    }
+    await toggleSaveExperience(id, 'post', {
+      title: post?.content?.substring(0, 60) || 'Student Reflection',
+      content: post?.content,
+      category: post?.categoryLabel || 'General',
+      author: post?.author || 'Anonymous Student'
+    });
+  };
 
   const refreshResponses = async () => {
     try {
@@ -161,7 +236,7 @@ export function PostDetailPage() {
             <button 
               type="button" 
               className="back-nav-btn"
-              onClick={() => navigate('/explore')}
+              onClick={handleBack}
             >
               ← Back to reflections
             </button>
@@ -217,12 +292,92 @@ export function PostDetailPage() {
             padding: '14px 18px',
             backgroundColor: 'var(--surface-subtle)',
             borderRadius: '6px',
-            marginBottom: '28px'
+            marginBottom: '24px'
           }}>
             <span className="banner-shield" aria-hidden="true">🛡</span>
             <p className="banner-text" style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               The author’s real identity is strictly shielded. All contributions remain 100% anonymous.
             </p>
+          </div>
+
+          {/* COULD THIS HELP YOU? (Scoped reaction + Save for later) */}
+          <div style={{
+            backgroundColor: 'var(--surface-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '18px 24px',
+            marginBottom: '28px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '14px'
+          }}>
+            <div>
+              <span style={{ fontSize: '0.94rem', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '2px' }}>
+                Could this help you?
+              </span>
+              <span style={{ fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                Let this student know their words resonated, or bookmark for later.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={handleToggleReaction}
+                style={{
+                  backgroundColor: userReacted ? 'rgba(56, 211, 159, 0.12)' : 'transparent',
+                  border: userReacted ? '1px solid var(--accent-mint)' : '1px solid var(--border)',
+                  color: userReacted ? 'var(--accent-mint)' : 'var(--text-primary)',
+                  borderRadius: '6px',
+                  padding: '7px 15px',
+                  fontSize: '0.86rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Mark as helpful"
+              >
+                <span>{userReacted ? '❤️' : '🤍'}</span>
+                <span>{userReacted ? 'Helped me' : 'This helped me'}</span>
+                <span style={{
+                  marginLeft: '4px',
+                  padding: '1px 6px',
+                  backgroundColor: 'var(--surface-subtle)',
+                  borderRadius: '10px',
+                  fontSize: '0.78rem'
+                }}>
+                  {reactionCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleToggleSave}
+                style={{
+                  backgroundColor: isSaved ? 'rgba(56, 211, 159, 0.12)' : 'transparent',
+                  border: isSaved ? '1px solid var(--accent-mint)' : '1px solid var(--border)',
+                  color: isSaved ? 'var(--accent-mint)' : 'var(--text-secondary)',
+                  borderRadius: '6px',
+                  padding: '7px 15px',
+                  fontSize: '0.86rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease'
+                }}
+                title={isSaved ? 'Remove from saved' : 'Save for later'}
+              >
+                <span>{isSaved ? '★' : '☆'}</span>
+                <span>{isSaved ? 'Saved' : 'Save for later'}</span>
+              </button>
+            </div>
           </div>
 
           {/* 1-TO-1 ANONYMOUS PRIVATE CONVERSATION ENTRY POINT */}
