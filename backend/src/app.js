@@ -18,9 +18,32 @@ const conversationsRoutes = require('./routes/conversations.routes');
 const app = express();
 
 // Security & Parsing Middlewares
+const rawOrigins = (env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+const defaultOrigins = [
+  'https://been-there-g5on.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
+const allowedOriginsSet = new Set([...rawOrigins, ...defaultOrigins]);
+
 app.use(cors({
-  origin: env.CORS_ORIGIN,
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow server-to-server, curl, or mobile requests with no origin
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.trim().replace(/\/+$/, '');
+    if (allowedOriginsSet.has(normalizedOrigin)) {
+      return callback(null, origin);
+    }
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));

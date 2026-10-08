@@ -1,4 +1,15 @@
-const API_BASE_URL = 'http://localhost:5000/api';
+function resolveApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && typeof envUrl === 'string') {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+  return import.meta.env.DEV
+    ? 'http://localhost:5000/api'
+    : 'https://been-there-psi.vercel.app/api';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 /**
  * Common fetch wrapper for Beenthere Backend API.
